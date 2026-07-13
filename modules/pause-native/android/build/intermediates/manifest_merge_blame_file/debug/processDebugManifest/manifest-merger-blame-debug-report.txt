@@ -1,0 +1,81 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    xmlns:tools="http://schemas.android.com/tools"
+4    package="expo.modules.pausenative" >
+5
+6    <uses-sdk android:minSdkVersion="24" />
+7
+8    <uses-permission
+8-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:4:5-5:47
+9        android:name="android.permission.PACKAGE_USAGE_STATS"
+9-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:4:22-75
+10        tools:ignore="ProtectedPermissions" />
+10-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:5:9-44
+11    <uses-permission
+11-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:6:5-7:53
+12        android:name="android.permission.QUERY_ALL_PACKAGES"
+12-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:6:22-74
+13        tools:ignore="QueryAllPackagesPermission" />
+13-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:7:9-50
+14
+15    <application>
+15-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:9:5-40:19
+16        <activity
+16-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:10:9-16:75
+17            android:name="expo.modules.pausenative.BreatheActivity"
+17-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:11:13-44
+18            android:excludeFromRecents="true"
+18-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:13:13-46
+19            android:exported="false"
+19-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:12:13-37
+20            android:launchMode="singleTask"
+20-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:14:13-44
+21            android:taskAffinity="expo.modules.pausenative.breathe"
+21-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:15:13-68
+22            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+22-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:16:13-72
+23
+24        <service
+24-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:18:9-29:19
+25            android:name="expo.modules.pausenative.PauseAccessibilityService"
+25-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:19:13-54
+26            android:exported="false"
+26-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:20:13-37
+27            android:label="@string/pause_accessibility_label"
+27-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:21:13-62
+28            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" >
+28-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:22:13-79
+29            <intent-filter>
+29-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:23:13-25:29
+30                <action android:name="android.accessibilityservice.AccessibilityService" />
+30-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:24:17-92
+30-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:24:25-89
+31            </intent-filter>
+32
+33            <meta-data
+33-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:26:13-28:70
+34                android:name="android.accessibilityservice"
+34-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:27:17-60
+35                android:resource="@xml/pause_accessibility_config" />
+35-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:28:17-67
+36        </service>
+37        <service
+37-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:31:9-39:19
+38            android:name="expo.modules.pausenative.PauseNotificationListener"
+38-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:32:13-54
+39            android:exported="false"
+39-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:33:13-37
+40            android:label="@string/pause_notif_label"
+40-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:34:13-54
+41            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" >
+41-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:35:13-87
+42            <intent-filter>
+42-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:36:13-38:29
+43                <action android:name="android.service.notification.NotificationListenerService" />
+43-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:37:17-99
+43-->/Users/clyde/Desktop/Tools/Pause/modules/pause-native/android/src/main/AndroidManifest.xml:37:25-96
+44            </intent-filter>
+45        </service>
+46    </application>
+47
+48</manifest>

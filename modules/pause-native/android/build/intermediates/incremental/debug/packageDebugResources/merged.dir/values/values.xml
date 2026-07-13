@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pause_accessibility_description">Pause watches which app comes to the foreground so it can show you a short breathing screen before you open the apps you chose. It runs entirely on your device — nothing is uploaded anywhere.</string>
+    <string name="pause_accessibility_label">Pause — mindful app interception</string>
+    <string name="pause_notif_label">Pause — notification muting</string>
+</resources>
