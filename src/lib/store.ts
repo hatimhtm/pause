@@ -178,6 +178,11 @@ export function useStore(): PauseState {
   return useSyncExternalStore(subscribe, () => state);
 }
 
+/** Non-reactive snapshot for imperative code (haptics, logging). */
+export function currentState(): PauseState {
+  return state;
+}
+
 export function useHydrated(): boolean {
   return useSyncExternalStore(subscribe, () => hydrated);
 }

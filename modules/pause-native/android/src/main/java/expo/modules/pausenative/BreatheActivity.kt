@@ -18,13 +18,21 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import java.util.concurrent.Executors
+import kotlin.random.Random
 
 /**
  * The full-screen breathing interstitial. Native (not React Native) so it appears instantly when a
  * watched app opens — a JS screen would cold-start too slowly and let the app flash through. Its
  * copy, colours and timing come from the JS config via intent extras, so it can still be restyled
  * over-the-air without a native rebuild.
+ *
+ * Deliberately shows NO countdown or progress: visible timers make waits feel ~30% shorter and
+ * give a sense of control (pedestrian countdown studies), and a learnable fixed length invites
+ * counting along on autopilot (the documented one-sec habituation failure). So the wait length is
+ * randomized per open (+0–40%), the only exit shown during the wait is "close", and "open anyway"
+ * appears late, small and unceremoniously — no checkmark, no reward for waiting it out.
  */
 class BreatheActivity : Activity() {
 
@@ -34,7 +42,6 @@ class BreatheActivity : Activity() {
     private var sessionMinutes = 5
     private var accent = Color.parseColor("#BFE3E2")
 
-    private lateinit var countdownText: TextView
     private lateinit var phaseText: TextView
     private lateinit var continueButton: Button
     private lateinit var reflectionText: TextView
@@ -48,14 +55,8 @@ class BreatheActivity : Activity() {
         override fun run() {
             remaining -= 1
             if (remaining <= 0) {
-                countdownText.text = "✓"
-                phaseText.text = "Still worth it?"
-                enableContinue()
+                revealContinue()
             } else {
-                countdownText.text = remaining.toString()
-                countdownText.scaleX = 1.14f
-                countdownText.scaleY = 1.14f
-                countdownText.animate().scaleX(1f).scaleY(1f).setDuration(260).start()
                 ui.postDelayed(this, 1000)
             }
         }
@@ -68,11 +69,14 @@ class BreatheActivity : Activity() {
         label = intent.getStringExtra(EXTRA_LABEL) ?: pkg
         breathSeconds = intent.getIntExtra(EXTRA_BREATH_SECONDS, MIN_BREATH_SECONDS)
             .coerceIn(MIN_BREATH_SECONDS, 120)
-        remaining = breathSeconds
+        // Unpredictable wait: the configured length plus 0–40%, so it can't be counted along.
+        remaining = breathSeconds + Random.nextInt(0, breathSeconds * 2 / 5 + 1)
         sessionMinutes = intent.getIntExtra(EXTRA_SESSION_MINUTES, 5)
         val showReflection = intent.getBooleanExtra(EXTRA_REFLECTION, true)
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Take a breath"
-        val reflection = intent.getStringExtra(EXTRA_REFLECTION_TEXT) ?: "Why are you opening it?"
+        val configured = intent.getStringExtra(EXTRA_REFLECTION_TEXT) ?: "Why are you opening it?"
+        // A different question each open — a fixed one stops being read after a week.
+        val reflection = (REFLECTION_PROMPTS + configured).random()
         continueLabelTemplate = intent.getStringExtra(EXTRA_CONTINUE_LABEL) ?: "Open anyway"
         val dismissLabel = intent.getStringExtra(EXTRA_DISMISS_LABEL) ?: "Not now"
         topColor = parseColor(intent.getStringExtra(EXTRA_COLOR_TOP), "#06403F")
@@ -155,17 +159,8 @@ class BreatheActivity : Activity() {
             background = circleDrawable(withAlpha(accent, 77))
             layoutParams = FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER)
         }
-        countdownText = TextView(this).apply {
-            text = remaining.toString()
-            setTextColor(Color.WHITE)
-            textSize = 40f
-            gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-        }
-        innerCircle.addView(countdownText)
+        // No countdown inside the circle — a visible timer makes the wait feel shorter and
+        // gives something to "watch", which is exactly what we don't want.
         circleWrap.addView(outerCircle)
         circleWrap.addView(innerCircle)
         root.addView(circleWrap, lp(matchWidth = true, weight = 1f).apply { gravity = Gravity.CENTER })
@@ -189,26 +184,29 @@ class BreatheActivity : Activity() {
         }
         root.addView(reflectionText)
 
-        continueButton = Button(this).apply {
-            text = "Wait ${remaining}s"
-            isAllCaps = false
-            textSize = 16f
-            setTextColor(withAlpha(Color.WHITE, 150))
-            background = buttonBg(withAlpha(Color.WHITE, 64))
-            isEnabled = false
-            setOnClickListener { onContinue() }
-        }
-        root.addView(continueButton, lp(matchWidth = true, weight = 0f).apply { height = dp(56) })
-
+        // Leaving is the big, inviting, always-available action…
         val dismissButton = Button(this).apply {
             text = dismissLabel
             isAllCaps = false
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            background = outlineBg(withAlpha(Color.WHITE, 120))
+            textSize = 16f
+            setTextColor(top)
+            background = buttonBg(Color.WHITE)
             setOnClickListener { onDismiss() }
         }
-        root.addView(dismissButton, lp(matchWidth = true, weight = 0f).apply { topMargin = dp(10); height = dp(52) })
+        root.addView(dismissButton, lp(matchWidth = true, weight = 0f).apply { height = dp(56) })
+
+        // …and continuing only materialises once the breath is over: small, dim, no fanfare.
+        continueButton = Button(this).apply {
+            text = continueLabel.replace("{app}", label)
+            isAllCaps = false
+            textSize = 14f
+            setTextColor(withAlpha(Color.WHITE, 170))
+            background = outlineBg(withAlpha(Color.WHITE, 70))
+            visibility = View.INVISIBLE
+            isEnabled = false
+            setOnClickListener { onContinue() }
+        }
+        root.addView(continueButton, lp(matchWidth = true, weight = 0f).apply { topMargin = dp(10); height = dp(46) })
 
         return root
     }
@@ -273,11 +271,13 @@ class BreatheActivity : Activity() {
         animators.forEach { it.start() }
     }
 
-    private fun enableContinue() {
+    /** The wait is over — let the quiet way in fade up. No checkmark, no reward. */
+    private fun revealContinue() {
+        phaseText.text = "Still worth it?"
         continueButton.isEnabled = true
-        continueButton.text = continueLabelTemplate.replace("{app}", label)
-        continueButton.setTextColor(parseColor("#06403F", "#06403F"))
-        continueButton.background = buttonBg(Color.WHITE)
+        continueButton.alpha = 0f
+        continueButton.visibility = View.VISIBLE
+        continueButton.animate().alpha(1f).setDuration(600).start()
     }
 
     // Rotating "look what this app is costing you" lines. The point is that the numbers are
@@ -339,6 +339,8 @@ class BreatheActivity : Activity() {
 
     private fun onDismiss() {
         EventLog(this).log(pkg, EventType.DISMISSED, System.currentTimeMillis())
+        // Walking away is the behaviour to reinforce — it gets the only positive feedback here.
+        Toast.makeText(this, "Good call.", Toast.LENGTH_SHORT).show()
         val home = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -407,6 +409,16 @@ class BreatheActivity : Activity() {
         /** Hard floor — anything shorter is easy to sit through on autopilot. */
         const val MIN_BREATH_SECONDS = 15
         private const val GUILT_INTERVAL_MS = 4000L
+
+        /** Rotated per open so the question keeps being read instead of pattern-matched away. */
+        private val REFLECTION_PROMPTS = listOf(
+            "Why are you opening it?",
+            "What were you doing ten seconds ago?",
+            "Will this make you feel better, or just later?",
+            "What were you hoping to find in there?",
+            "Is this a decision, or a reflex?",
+            "What else could these minutes become?",
+        )
 
         const val EXTRA_PACKAGE = "pkg"
         const val EXTRA_LABEL = "label"

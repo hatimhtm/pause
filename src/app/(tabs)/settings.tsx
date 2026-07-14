@@ -50,8 +50,8 @@ export default function SettingsScreen() {
       <Card style={{ marginBottom: spacing.sm }}>
         <Heading style={{ fontSize: 15, marginBottom: spacing.md }}>Default pause length</Heading>
         <Body dim style={{ marginBottom: spacing.md, fontSize: 13 }}>
-          Used for newly added apps. 15 seconds is the floor — any shorter and the open stays
-          mindless.
+          Used for newly added apps. 15 seconds is the floor, and the real wait varies a little
+          each time — no counter, no counting along.
         </Body>
         <Chips
           options={[15, 20, 30, 45, 60]}
@@ -76,7 +76,7 @@ export default function SettingsScreen() {
 
       <ToggleRow
         title="Haptics"
-        subtitle="Gentle buzz on the breathing screen"
+        subtitle="Gentle feedback on taps and toggles"
         value={settings.haptics}
         onValueChange={(v) => actions.updateSettings({ haptics: v })}
       />

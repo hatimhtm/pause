@@ -18,6 +18,7 @@ import {
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { tap } from '@/lib/haptics';
 import { radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 // ---- Screen scaffold ----
@@ -166,7 +167,12 @@ export function Card({
   );
   if (!onPress) return body(false);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>
       {({ pressed }) => body(pressed)}
     </Pressable>
   );
@@ -202,7 +208,14 @@ export function Button({
           : c.text;
   return (
     <Pressable
-      onPress={disabled ? undefined : onPress}
+      onPress={
+        disabled
+          ? undefined
+          : () => {
+              tap();
+              onPress?.();
+            }
+      }
       style={({ pressed }) => [
         styles.button,
         {
@@ -323,7 +336,10 @@ export function ToggleRow({
         </View>
         <Switch
           value={value}
-          onValueChange={onValueChange}
+          onValueChange={(v) => {
+            tap();
+            onValueChange(v);
+          }}
           trackColor={{ true: c.primary, false: c.cardAlt }}
           thumbColor="#fff"
         />
@@ -419,7 +435,10 @@ export function Chips<T extends string | number>({
         return (
           <Pressable
             key={String(opt)}
-            onPress={() => onChange(opt)}
+            onPress={() => {
+              tap();
+              onChange(opt);
+            }}
             style={({ pressed }) => ({
               paddingVertical: 9,
               paddingHorizontal: spacing.lg,

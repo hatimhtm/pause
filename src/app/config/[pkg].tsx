@@ -47,6 +47,9 @@ export default function AppConfigScreen() {
         <>
           <Card style={{ marginTop: spacing.sm }}>
             <Heading style={{ fontSize: 15, marginBottom: spacing.md }}>Make me wait</Heading>
+            <Body dim style={{ marginBottom: spacing.md, fontSize: 13 }}>
+              The real wait varies a little each time, so it can’t be counted down.
+            </Body>
             <Chips
               options={BREATH_OPTIONS}
               value={app.breathSeconds}

@@ -1,8 +1,9 @@
 import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme } from 'react-native';
 
 import '@/global.css';
 import { hydrate, useHydrated, useStore } from '@/lib/store';
@@ -22,6 +23,19 @@ export default function RootLayout() {
   useEffect(() => {
     if (hydrated) SplashScreen.hideAsync();
   }, [hydrated]);
+
+  // Quietly fetch any OTA update whenever the app comes to the foreground; it applies on the
+  // next launch. Pull-to-refresh on Today stays the "give it to me now" path.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (s) => {
+      if (s !== 'active' || !Updates.isEnabled) return;
+      try {
+        const res = await Updates.checkForUpdateAsync();
+        if (res.isAvailable) await Updates.fetchUpdateAsync();
+      } catch {}
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (hydrated && !settings.onboardingComplete) {
