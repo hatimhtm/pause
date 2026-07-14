@@ -1,10 +1,12 @@
 package expo.modules.pausenative
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
+import android.view.inputmethod.InputMethodManager
 
 /**
  * The engine. Watches which app comes to the foreground and, for apps the user chose, shows a
@@ -34,13 +36,17 @@ class PauseAccessibilityService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (pkg == packageName) return
 
+        val now = System.currentTimeMillis()
+        // The keyboard or system UI coming up is not an app switch — if it counted, closing the
+        // keyboard inside a watched app would look like a fresh open and re-trigger the pause.
+        if (isOverlayPackage(pkg, now)) return
+
         val isFreshOpen = pkg != lastForegroundPkg
         lastForegroundPkg = pkg
         if (!isFreshOpen) return
 
         val cfg = config.config()
         val app = cfg.apps[pkg] ?: return
-        val now = System.currentTimeMillis()
         val downtime = cfg.quietActiveAt(now)
         val shouldPause = (app.enabled || downtime) && !GrantRegistry.isGranted(pkg, now)
         if (!shouldPause) return
@@ -71,6 +77,24 @@ class PauseAccessibilityService : AccessibilityService() {
         main.post { startActivity(intent) }
     }
 
+    private var imePackages: Set<String> = emptySet()
+    private var imeLoadedAt = 0L
+
+    /** Keyboards and the system UI float over apps without replacing them. */
+    private fun isOverlayPackage(pkg: String, now: Long): Boolean {
+        if (pkg == "com.android.systemui") return true
+        if (now - imeLoadedAt > IME_REFRESH_MS) {
+            imePackages = try {
+                (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                    .enabledInputMethodList.map { it.packageName }.toSet()
+            } catch (_: Exception) {
+                emptySet()
+            }
+            imeLoadedAt = now
+        }
+        return pkg in imePackages
+    }
+
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -80,6 +104,7 @@ class PauseAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val LAUNCH_DEBOUNCE_MS = 800L
+        private const val IME_REFRESH_MS = 60_000L
 
         @Volatile
         var isRunning: Boolean = false

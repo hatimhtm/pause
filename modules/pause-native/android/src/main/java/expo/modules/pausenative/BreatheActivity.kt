@@ -26,8 +26,8 @@ import java.util.concurrent.Executors
  */
 class BreatheActivity : Activity() {
 
-    private var remaining = 8
-    private var breathSeconds = 8
+    private var remaining = MIN_BREATH_SECONDS
+    private var breathSeconds = MIN_BREATH_SECONDS
     private lateinit var pkg: String
     private var sessionMinutes = 5
     private var accent = Color.parseColor("#BFE3E2")
@@ -47,7 +47,7 @@ class BreatheActivity : Activity() {
             remaining -= 1
             if (remaining <= 0) {
                 countdownText.text = "✓"
-                phaseText.text = "Still want to?"
+                phaseText.text = "Still worth it?"
                 enableContinue()
             } else {
                 countdownText.text = remaining.toString()
@@ -61,7 +61,8 @@ class BreatheActivity : Activity() {
 
         pkg = intent.getStringExtra(EXTRA_PACKAGE) ?: run { finish(); return }
         label = intent.getStringExtra(EXTRA_LABEL) ?: pkg
-        breathSeconds = intent.getIntExtra(EXTRA_BREATH_SECONDS, 8).coerceIn(3, 60)
+        breathSeconds = intent.getIntExtra(EXTRA_BREATH_SECONDS, MIN_BREATH_SECONDS)
+            .coerceIn(MIN_BREATH_SECONDS, 120)
         remaining = breathSeconds
         sessionMinutes = intent.getIntExtra(EXTRA_SESSION_MINUTES, 5)
         val showReflection = intent.getBooleanExtra(EXTRA_REFLECTION, true)
@@ -76,7 +77,7 @@ class BreatheActivity : Activity() {
         setContentView(buildUi(title, reflection, showReflection, continueLabelTemplate, dismissLabel, top, bottom))
         startBreathingAnimation()
         ui.postDelayed(tick, 1000)
-        loadTodayMinutes()
+        loadGuiltLines()
     }
 
     private fun buildUi(
@@ -119,7 +120,8 @@ class BreatheActivity : Activity() {
         todayText = TextView(this).apply {
             text = ""
             setTextColor(accent)
-            textSize = 14f
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(0, dp(8), 0, 0)
         }
@@ -223,15 +225,55 @@ class BreatheActivity : Activity() {
         continueButton.background = buttonBg(Color.WHITE)
     }
 
-    private fun loadTodayMinutes() {
+    // Rotating "look what this app is costing you" lines. The point is that the numbers are
+    // real — today, yesterday, this week, open count — so the pause stings instead of soothing.
+    private var guiltLines: List<String> = emptyList()
+    private var guiltIndex = 0
+    private val guiltCycler = object : Runnable {
+        override fun run() {
+            if (guiltLines.size > 1) {
+                guiltIndex = (guiltIndex + 1) % guiltLines.size
+                todayText.animate().alpha(0f).setDuration(220).withEndAction {
+                    todayText.text = guiltLines[guiltIndex]
+                    todayText.animate().alpha(1f).setDuration(220).start()
+                }.start()
+            }
+            ui.postDelayed(this, GUILT_INTERVAL_MS)
+        }
+    }
+
+    private fun loadGuiltLines() {
         io.execute {
             val q = UsageQuery(this)
-            if (!q.hasPermission()) return@execute
-            val minutes = (q.usageBetween(UsageQuery.startOfToday(), System.currentTimeMillis())[pkg] ?: 0L) / 60000L
+            val lines = ArrayList<String>()
+            if (q.hasPermission()) {
+                val now = System.currentTimeMillis()
+                val todayStart = UsageQuery.startOfToday()
+                val dayMs = 24L * 60 * 60 * 1000
+                val todayMs = q.usageBetween(todayStart, now)[pkg] ?: 0L
+                val yesterdayMs = q.usageBetween(todayStart - dayMs, todayStart)[pkg] ?: 0L
+                val weekMs = q.usageBetween(todayStart - 6 * dayMs, now)[pkg] ?: 0L
+                val opens = q.opensBetween(todayStart, now)[pkg] ?: 0
+
+                lines += if (todayMs < 60_000) "Nothing wasted here yet today. Keep it that way?"
+                else "You've already wasted ${fmtDuration(todayMs)} here today"
+                if (opens > 1) lines += "This is open number $opens today"
+                if (yesterdayMs >= 10 * 60_000) lines += "Yesterday: ${fmtDuration(yesterdayMs)} gone to $label"
+                if (weekMs >= 30 * 60_000) lines += "${fmtDuration(weekMs)} lost to $label this week"
+            }
+            if (lines.isEmpty()) lines += "Do you actually need this right now?"
             ui.post {
-                todayText.text = if (minutes <= 0) "No time here yet today" else "$minutes min here already today"
+                guiltLines = lines
+                guiltIndex = 0
+                todayText.text = lines[0]
+                if (lines.size > 1) ui.postDelayed(guiltCycler, GUILT_INTERVAL_MS)
             }
         }
+    }
+
+    private fun fmtDuration(ms: Long): String {
+        val min = ms / 60_000L
+        return if (min < 60) "$min min" else "${min / 60} h ${min % 60} min"
     }
 
     private fun onContinue() {
@@ -257,6 +299,7 @@ class BreatheActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        io.shutdown()
         super.onDestroy()
     }
 
@@ -298,6 +341,10 @@ class BreatheActivity : Activity() {
     }
 
     companion object {
+        /** Hard floor — anything shorter is easy to sit through on autopilot. */
+        const val MIN_BREATH_SECONDS = 15
+        private const val GUILT_INTERVAL_MS = 4000L
+
         const val EXTRA_PACKAGE = "pkg"
         const val EXTRA_LABEL = "label"
         const val EXTRA_BREATH_SECONDS = "breath"

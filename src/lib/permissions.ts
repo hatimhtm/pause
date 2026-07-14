@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { Native } from './native';
 
@@ -21,5 +22,15 @@ export function readPermissions(): PermState {
 export function usePermissions() {
   const [perm, setPerm] = useState<PermState>(readPermissions);
   const refresh = useCallback(() => setPerm(readPermissions()), []);
+
+  // Granting happens in the system Settings app, which is an AppState round-trip, not a
+  // navigation event — so re-read every time Pause comes back to the foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+
   return { perm, refresh };
 }

@@ -11,7 +11,7 @@
 [![Expo](https://img.shields.io/badge/EXPO-SDK%2057-1A1A1A?style=for-the-badge&logo=expo&logoColor=CCFF00&labelColor=1A1A1A)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/REACT%20NATIVE-1A1A1A?style=for-the-badge&logo=react&logoColor=CCFF00&labelColor=1A1A1A)](https://reactnative.dev)
 [![Kotlin](https://img.shields.io/badge/KOTLIN-ENGINE-1A1A1A?style=for-the-badge&logo=kotlin&logoColor=CCFF00&labelColor=1A1A1A)](https://kotlinlang.org)
-[![Download](https://img.shields.io/badge/DOWNLOAD-v1.0-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](../../releases/latest)
+[![Download](https://img.shields.io/badge/DOWNLOAD-v1.1-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](../../releases/latest)
 [![License](https://img.shields.io/badge/LICENSE-MIT-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](LICENSE)
 
 <br>
@@ -50,9 +50,10 @@ Feeds and reels are engineered to be opened without thinking. Hard blockers lose
 ```
 ┌─ THE PAUSE   → full-screen breathing screen before any app you choose
 ├─ NEVER BLOCK → always "open anyway" after the breath — friction, not a wall
-├─ REFLECT     → optional "why are you opening it?" prompt + wait timer
+├─ REFLECT     → optional "why are you opening it?" prompt + wait timer (15s minimum)
+├─ GUILT MODE  → the wait screen cycles your real numbers — today · yesterday · this week · opens
 ├─ STATS       → per-app time · opens · times you reached for it · times you backed out
-├─ TRENDS      → 7-day chart of time on your watched apps
+├─ TRENDS      → 7-day chart of time on your watched apps — tap any day for the full breakdown
 ├─ QUIET HOURS → windows where every watched app pauses + notifications mute
 ├─ MUTE        → dismiss notifications from the apps you choose
 └─ YOURS ALONE → on-device only · no accounts · no servers · nothing uploaded
@@ -104,7 +105,7 @@ Android 8.0 (API 26) and newer · phones + tablets · light & dark
 
 ### `/// STATUS`
 
-v1.0 — feature-complete and building green (TypeScript, JS bundle, and native Gradle build all pass). Distributed as a signed APK via Releases; UI updates over-the-air. A personal project, shared open-source in case it's useful to someone else.
+v1.1 — feature-complete and building green (TypeScript, JS bundle, and native Gradle build all pass). The pause now has a 15-second floor and cycles real usage numbers ("you've already wasted 42 min here today") while you wait — friction that stings, still never a wall. Distributed as a signed APK via Releases; UI updates over-the-air. A personal project, shared open-source in case it's useful to someone else.
 
 <div align="center">
 <br>

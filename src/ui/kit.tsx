@@ -23,11 +23,11 @@ import { radius, spacing, useAppTheme, useResponsive } from '@/theme';
 export function Screen({
   children,
   scroll = true,
-  edges = ['top'],
+  edges = ['top', 'left', 'right'],
 }: {
   children: React.ReactNode;
   scroll?: boolean;
-  edges?: ('top' | 'bottom')[];
+  edges?: ('top' | 'bottom' | 'left' | 'right')[];
 }) {
   const c = useAppTheme();
   const r = useResponsive();
@@ -107,13 +107,29 @@ export function Card({
 }) {
   const c = useAppTheme();
   const bg = tone === 'primarySoft' ? c.primarySoft : tone === 'accent' ? c.accent + '22' : c.card;
-  const body = (
-    <View style={[styles.card, { backgroundColor: bg, borderColor: c.border }, style]}>{children}</View>
+  const body = (pressed: boolean) => (
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: bg,
+          borderColor: c.border,
+          shadowColor: '#000',
+          shadowOpacity: c.scheme === 'dark' ? 0 : 0.05,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: c.scheme === 'dark' ? 0 : 2,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        },
+        style,
+      ]}>
+      {children}
+    </View>
   );
-  if (!onPress) return body;
+  if (!onPress) return body(false);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-      {body}
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>
+      {({ pressed }) => body(pressed)}
     </Pressable>
   );
 }
@@ -155,7 +171,8 @@ export function Button({
           backgroundColor: bg,
           borderColor: variant === 'ghost' ? c.border : 'transparent',
           borderWidth: variant === 'ghost' ? 1 : 0,
-          opacity: disabled ? 0.4 : pressed ? 0.88 : 1,
+          opacity: disabled ? 0.4 : 1,
+          transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
         },
         style,
       ]}>
@@ -172,15 +189,17 @@ export function StatTile({
   label,
   icon,
   tone = 'card',
+  onPress,
 }: {
   value: string;
   label: string;
   icon?: keyof typeof Ionicons.glyphMap;
   tone?: 'card' | 'primary';
+  onPress?: () => void;
 }) {
   const c = useAppTheme();
   const primary = tone === 'primary';
-  return (
+  const inner = (
     <View
       style={[
         styles.card,
@@ -188,16 +207,30 @@ export function StatTile({
         { backgroundColor: primary ? c.primary : c.card, borderColor: primary ? 'transparent' : c.border },
       ]}>
       {icon ? (
-        <Ionicons
-          name={icon}
-          size={18}
-          color={primary ? c.onPrimary : c.primary}
-          style={{ marginBottom: spacing.sm }}
-        />
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: primary ? '#FFFFFF22' : c.primarySoft,
+            marginBottom: spacing.sm,
+          }}>
+          <Ionicons name={icon} size={17} color={primary ? c.onPrimary : c.primary} />
+        </View>
       ) : null}
-      <Text style={{ color: primary ? c.onPrimary : c.text, fontSize: 26, fontWeight: '800' }}>{value}</Text>
+      <Text style={{ color: primary ? c.onPrimary : c.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.5 }}>
+        {value}
+      </Text>
       <Text style={{ color: primary ? c.onPrimary + 'CC' : c.textDim, fontSize: 12.5, marginTop: 2 }}>{label}</Text>
     </View>
+  );
+  if (!onPress) return <View style={{ flex: 1 }}>{inner}</View>;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.9 : 1 })}>
+      {inner}
+    </Pressable>
   );
 }
 
@@ -263,24 +296,63 @@ export function ToggleRow({
 
 // ---- Bar chart ----
 
-export function BarChart({ values, labels, height = 120 }: { values: number[]; labels: string[]; height?: number }) {
+export function BarChart({
+  values,
+  labels,
+  height = 132,
+  activeIndex,
+  onBarPress,
+  formatValue,
+}: {
+  values: number[];
+  labels: string[];
+  height?: number;
+  /** Highlighted bar (defaults to the max). */
+  activeIndex?: number;
+  onBarPress?: (index: number) => void;
+  /** Shown above each non-zero bar; keep it short. */
+  formatValue?: (v: number) => string;
+}) {
   const c = useAppTheme();
   const max = Math.max(1, ...values);
+  const highlight = activeIndex ?? values.indexOf(Math.max(...values));
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', height }}>
-      {values.map((v, i) => (
-        <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-          <View
-            style={{
-              width: '58%',
-              height: Math.max(4, (height - 24) * (v / max)),
-              backgroundColor: v === max ? c.primary : c.primary + '99',
-              borderRadius: 6,
-            }}
-          />
-          <Text style={{ color: c.textFaint, fontSize: 11, marginTop: 6 }}>{labels[i]}</Text>
-        </View>
-      ))}
+      {values.map((v, i) => {
+        const active = i === highlight;
+        const bar = (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+            {formatValue && v > 0 ? (
+              <Text style={{ color: active ? c.text : c.textFaint, fontSize: 10, fontWeight: '700', marginBottom: 3 }}>
+                {formatValue(v)}
+              </Text>
+            ) : null}
+            <View
+              style={{
+                width: '58%',
+                height: Math.max(4, (height - 40) * (v / max)),
+                backgroundColor: active ? c.primary : c.primary + '55',
+                borderRadius: 7,
+              }}
+            />
+            <Text
+              style={{
+                color: active ? c.text : c.textFaint,
+                fontSize: 11,
+                fontWeight: active ? '800' : '400',
+                marginTop: 6,
+              }}>
+              {labels[i]}
+            </Text>
+          </View>
+        );
+        if (!onBarPress) return <React.Fragment key={i}>{bar}</React.Fragment>;
+        return (
+          <Pressable key={i} onPress={() => onBarPress(i)} style={{ flex: 1, height: '100%' }}>
+            {bar}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -307,12 +379,13 @@ export function Chips<T extends string | number>({
           <Pressable
             key={String(opt)}
             onPress={() => onChange(opt)}
-            style={{
+            style={({ pressed }) => ({
               paddingVertical: 9,
               paddingHorizontal: spacing.lg,
               borderRadius: radius.pill,
               backgroundColor: active ? c.primary : c.cardAlt,
-            }}>
+              transform: [{ scale: pressed ? 0.95 : 1 }],
+            })}>
             <Text style={{ color: active ? c.onPrimary : c.text, fontWeight: '700', fontSize: 14 }}>
               {format ? format(opt) : String(opt)}
             </Text>
@@ -332,18 +405,37 @@ export function Spinner() {
   );
 }
 
-export function GradientHeader({ children }: { children: React.ReactNode }) {
+export function GradientHeader({
+  children,
+  onPress,
+}: {
+  children: React.ReactNode;
+  onPress?: () => void;
+}) {
   const c = useAppTheme();
-  return (
-    <LinearGradient colors={[c.overlayTop, c.overlayBottom]} style={{ borderRadius: radius.lg, padding: spacing.xl }}>
+  const inner = (
+    <LinearGradient
+      colors={[c.overlayTop, c.overlayBottom]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ borderRadius: radius.xl, padding: spacing.xl, overflow: 'hidden' }}>
+      {/* soft decorative circles */}
+      <View style={[styles.deco, { width: 190, height: 190, top: -70, right: -50 }]} />
+      <View style={[styles.deco, { width: 110, height: 110, bottom: -40, left: -30 }]} />
       {children}
     </LinearGradient>
+  );
+  if (!onPress) return inner;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.93 : 1 })}>
+      {inner}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     padding: spacing.lg,
   },
@@ -354,6 +446,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  deco: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF14',
   },
   button: {
     flexDirection: 'row',

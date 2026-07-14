@@ -1,6 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-string pause_accessibility_description
-string pause_accessibility_label
-string pause_notif_label
-xml pause_accessibility_config

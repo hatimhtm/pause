@@ -37,6 +37,7 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
         <Stack.Screen name="picker" options={{ presentation: 'modal' }} />
         <Stack.Screen name="config/[pkg]" />
+        <Stack.Screen name="stats" />
       </Stack>
     </>
   );

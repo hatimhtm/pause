@@ -6,6 +6,10 @@ import type { BreathStyle, MonitoredApp, PauseState, QuietHours, Settings } from
 
 const STORAGE_KEY = 'pause.state.v1';
 
+/** Anything shorter is easy to sit through on autopilot — the pause has to cost something. */
+export const MIN_BREATH_SECONDS = 15;
+const EVENT_RETENTION_DAYS = 30;
+
 const defaultBreath: BreathStyle = {
   title: 'Take a breath',
   reflection: 'Why are you opening it?',
@@ -19,7 +23,7 @@ const defaultBreath: BreathStyle = {
 const defaultSettings: Settings = {
   onboardingComplete: false,
   sessionMinutes: 5,
-  defaultBreathSeconds: 8,
+  defaultBreathSeconds: MIN_BREATH_SECONDS,
   haptics: true,
 };
 
@@ -75,24 +79,42 @@ function set(next: PauseState) {
   void persist();
 }
 
+/** Raise any pause length saved before the 15-second floor existed. */
+function clampBreathSeconds(s: PauseState): PauseState {
+  const apps: PauseState['apps'] = {};
+  for (const [pkg, app] of Object.entries(s.apps)) {
+    apps[pkg] = { ...app, breathSeconds: Math.max(MIN_BREATH_SECONDS, app.breathSeconds) };
+  }
+  return {
+    ...s,
+    apps,
+    settings: {
+      ...s.settings,
+      defaultBreathSeconds: Math.max(MIN_BREATH_SECONDS, s.settings.defaultBreathSeconds),
+    },
+  };
+}
+
 export async function hydrate() {
   if (hydrated) return;
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PauseState>;
-      state = {
+      state = clampBreathSeconds({
         apps: parsed.apps ?? {},
         quiet: parsed.quiet ?? [],
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
         breath: { ...defaultBreath, ...(parsed.breath ?? {}) },
-      };
+      });
     }
   } catch {}
   hydrated = true;
   emit();
-  // Make sure native has the latest config even on a cold start.
-  Native.setConfig(toNativeConfig(state));
+  // Persist any clamping and make sure native has the latest config even on a cold start.
+  void persist();
+  // The event log has no other janitor — trim it on every cold start.
+  Native.pruneEventsBefore(Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 }
 
 // ---- mutations ----

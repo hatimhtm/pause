@@ -1,4 +1,0 @@
-int string pause_accessibility_description 0x0
-int string pause_accessibility_label 0x0
-int string pause_notif_label 0x0
-int xml pause_accessibility_config 0x0

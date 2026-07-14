@@ -44,3 +44,7 @@ example
 
 # claude
 .claude/
+
+# module build outputs
+modules/pause-native/android/build/
+modules/pause-native/android/.gradle/

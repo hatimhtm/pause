@@ -1,10 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/theme';
 
 export default function TabsLayout() {
   const c = useAppTheme();
+  // Edge-to-edge Android draws the gesture/navigation bar over the app — pad the tab bar
+  // below the system inset so labels never sit under it.
+  const insets = useSafeAreaInsets();
   return (
     <Tabs
       screenOptions={{
@@ -14,9 +18,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: c.bgElevated,
           borderTopColor: c.border,
-          height: 64,
+          height: 64 + insets.bottom,
           paddingTop: 6,
-          paddingBottom: 10,
+          paddingBottom: 10 + insets.bottom,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>

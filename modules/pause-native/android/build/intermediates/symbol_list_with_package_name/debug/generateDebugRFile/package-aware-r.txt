@@ -1,5 +1,0 @@
-expo.modules.pausenative
-string pause_accessibility_description
-string pause_accessibility_label
-string pause_notif_label
-xml pause_accessibility_config

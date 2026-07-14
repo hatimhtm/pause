@@ -9,7 +9,9 @@ import { Body, Card, Chips, Heading, Label, Screen, Title, ToggleRow } from '@/u
 
 const BREATH_PRESETS = [
   { name: 'Calm teal', colorTop: '#06403F', colorBottom: '#0E7C7B', colorAccent: '#BFE3E2' },
+  { name: 'Burgundy', colorTop: '#2E060D', colorBottom: '#7A1E2C', colorAccent: '#F3CDD3' },
   { name: 'Dusk', colorTop: '#2A2140', colorBottom: '#5B4B8A', colorAccent: '#D9CFF2' },
+  { name: 'Midnight', colorTop: '#0B1026', colorBottom: '#2C3E6B', colorAccent: '#CBD8F5' },
   { name: 'Clay', colorTop: '#4A241C', colorBottom: '#B4573D', colorAccent: '#F3D2C4' },
   { name: 'Forest', colorTop: '#122A1E', colorBottom: '#2E6B45', colorAccent: '#CDEBD6' },
 ];
@@ -48,10 +50,11 @@ export default function SettingsScreen() {
       <Card style={{ marginBottom: spacing.sm }}>
         <Heading style={{ fontSize: 15, marginBottom: spacing.md }}>Default pause length</Heading>
         <Body dim style={{ marginBottom: spacing.md, fontSize: 13 }}>
-          Used for newly added apps.
+          Used for newly added apps. 15 seconds is the floor — any shorter and the open stays
+          mindless.
         </Body>
         <Chips
-          options={[3, 5, 8, 10, 15, 20]}
+          options={[15, 20, 30, 45, 60]}
           value={settings.defaultBreathSeconds}
           onChange={(v) => actions.updateSettings({ defaultBreathSeconds: v })}
           format={(v) => `${v}s`}
@@ -89,7 +92,7 @@ export default function SettingsScreen() {
           style={{ color: c.text, backgroundColor: c.bg, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, fontSize: 16, marginBottom: spacing.md }}
         />
         <Label style={{ marginBottom: spacing.sm }}>Theme</Label>
-        <View style={{ flexDirection: 'row', gap: spacing.md }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
           {BREATH_PRESETS.map((p) => {
             const active = breath.colorBottom === p.colorBottom;
             return (

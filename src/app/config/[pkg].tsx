@@ -6,7 +6,7 @@ import { actions, useStore } from '@/lib/store';
 import { spacing, useAppTheme } from '@/theme';
 import { AppAvatar, Body, Button, Card, Chips, Heading, Label, Screen, ToggleRow } from '@/ui/kit';
 
-const BREATH_OPTIONS = [3, 5, 8, 10, 15, 20, 30];
+const BREATH_OPTIONS = [15, 20, 30, 45, 60];
 
 export default function AppConfigScreen() {
   const c = useAppTheme();
