@@ -11,7 +11,7 @@
 [![Expo](https://img.shields.io/badge/EXPO-SDK%2057-1A1A1A?style=for-the-badge&logo=expo&logoColor=CCFF00&labelColor=1A1A1A)](https://expo.dev)
 [![React Native](https://img.shields.io/badge/REACT%20NATIVE-1A1A1A?style=for-the-badge&logo=react&logoColor=CCFF00&labelColor=1A1A1A)](https://reactnative.dev)
 [![Kotlin](https://img.shields.io/badge/KOTLIN-ENGINE-1A1A1A?style=for-the-badge&logo=kotlin&logoColor=CCFF00&labelColor=1A1A1A)](https://kotlinlang.org)
-[![Download](https://img.shields.io/badge/DOWNLOAD-v1.2-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](../../releases/latest)
+[![Download](https://img.shields.io/badge/DOWNLOAD-v1.3-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](../../releases/latest)
 [![License](https://img.shields.io/badge/LICENSE-MIT-1A1A1A?style=for-the-badge&labelColor=1A1A1A&color=CCFF00)](LICENSE)
 
 <br>
@@ -105,7 +105,7 @@ Android 8.0 (API 26) and newer · phones + tablets · light & dark
 
 ### `/// STATUS`
 
-v1.2 — feature-complete and building green (TypeScript, JS bundle, and native Gradle build all pass). The pause has a 15-second-minimum, slightly randomized wait with no visible countdown (a timer makes waiting easier — that defeats the point), and cycles real usage numbers ("you've already wasted 42 min here today") while you wait — friction that stings, still never a wall. Distributed as a signed APK via Releases; UI updates over-the-air. A personal project, shared open-source in case it's useful to someone else.
+v1.3 — feature-complete and building green (TypeScript, JS bundle, and native Gradle build all pass). The pause has a 15-second-minimum, slightly randomized wait with no visible countdown (a timer makes waiting easier — that defeats the point), and cycles real usage numbers ("you've already wasted 42 min here today") while you wait — friction that stings, still never a wall. Distributed as a signed APK via Releases; UI updates over-the-air. A personal project, shared open-source in case it's useful to someone else.
 
 <div align="center">
 <br>

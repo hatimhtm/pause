@@ -48,7 +48,8 @@ export function Screen({
       {scroll ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: spacing.xxxl * 2 }}
+          // room for the floating pill tab bar plus breathing space
+          contentContainerStyle={{ paddingBottom: spacing.xxxl * 3 }}
           refreshControl={
             onRefresh ? (
               <RefreshControl
@@ -83,7 +84,10 @@ export function Appear({
 }) {
   return (
     <Animated.View
-      entering={FadeInDown.duration(320).delay(Math.min(index, 8) * 55)}
+      entering={FadeInDown.springify()
+        .damping(17)
+        .stiffness(160)
+        .delay(Math.min(index, 8) * 55)}
       style={style}>
       {children}
     </Animated.View>

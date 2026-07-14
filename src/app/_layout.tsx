@@ -46,10 +46,10 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="picker" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="onboarding" options={{ gestureEnabled: false, animation: 'fade' }} />
+        <Stack.Screen name="picker" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="config/[pkg]" />
         <Stack.Screen name="stats" />
         <Stack.Screen name="attempts" />

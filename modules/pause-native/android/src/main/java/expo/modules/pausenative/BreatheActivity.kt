@@ -143,8 +143,14 @@ class BreatheActivity : Activity() {
         header.addView(todayText)
         root.addView(header, lp(matchWidth = true, weight = 0f).apply { topMargin = dp(8) })
 
-        // Middle: breathing circles + countdown
-        val circleWrap = FrameLayout(this)
+        // Middle: a soft layered orb. No countdown anywhere — a visible timer makes the wait
+        // feel shorter and gives something to "watch", which is exactly what we don't want.
+        circleWrap = FrameLayout(this)
+        glowOrb = View(this).apply {
+            background = glowDrawable(withAlpha(accent, 70), 150)
+            layoutParams = FrameLayout.LayoutParams(dp(300), dp(300), Gravity.CENTER)
+        }
+        circleWrap.addView(glowOrb)
         rippleRing = View(this).apply {
             background = ringDrawable(withAlpha(accent, 200))
             layoutParams = FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER)
@@ -152,15 +158,13 @@ class BreatheActivity : Activity() {
         }
         circleWrap.addView(rippleRing)
         outerCircle = View(this).apply {
-            background = circleDrawable(withAlpha(accent, 46))
+            background = circleDrawable(withAlpha(accent, 38))
             layoutParams = FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER)
         }
         innerCircle = FrameLayout(this).apply {
             background = circleDrawable(withAlpha(accent, 77))
             layoutParams = FrameLayout.LayoutParams(dp(150), dp(150), Gravity.CENTER)
         }
-        // No countdown inside the circle — a visible timer makes the wait feel shorter and
-        // gives something to "watch", which is exactly what we don't want.
         circleWrap.addView(outerCircle)
         circleWrap.addView(innerCircle)
         root.addView(circleWrap, lp(matchWidth = true, weight = 1f).apply { gravity = Gravity.CENTER })
@@ -214,17 +218,30 @@ class BreatheActivity : Activity() {
     private lateinit var outerCircle: View
     private lateinit var innerCircle: FrameLayout
     private lateinit var rippleRing: View
+    private lateinit var glowOrb: View
+    private lateinit var circleWrap: FrameLayout
     private lateinit var bgDrawable: GradientDrawable
     private var topColor = Color.parseColor("#06403F")
     private var bottomColor = Color.parseColor("#0E7C7B")
+    private var currentPhase = ""
     private val animators = ArrayList<ValueAnimator>()
     private val argb = ArgbEvaluator()
+
+    /** Crossfade the phase label instead of snapping it. */
+    private fun setPhase(text: String) {
+        if (text == currentPhase) return
+        currentPhase = text
+        phaseText.animate().alpha(0.2f).setDuration(160).withEndAction {
+            phaseText.text = text
+            phaseText.animate().alpha(1f).setDuration(260).start()
+        }.start()
+    }
 
     private fun startBreathingAnimation() {
         // 4s per half-breath reads as calm regardless of how long the wait is.
         val half = 4000L
 
-        // Circles swell and shrink with an eased curve — the linear version looked mechanical.
+        // Glow + outer circle carry the main breath.
         animators += ValueAnimator.ofFloat(0.68f, 1f).apply {
             duration = half
             repeatCount = ValueAnimator.INFINITE
@@ -233,14 +250,29 @@ class BreatheActivity : Activity() {
             addUpdateListener { a ->
                 val s = a.animatedValue as Float
                 outerCircle.scaleX = s; outerCircle.scaleY = s
-                innerCircle.scaleX = s; innerCircle.scaleY = s
+                glowOrb.scaleX = 0.85f + 0.35f * s
+                glowOrb.scaleY = 0.85f + 0.35f * s
+                glowOrb.alpha = 0.55f + 0.45f * s
                 if (remaining > 0) {
-                    phaseText.text = if (s > 0.84f) "Breathe in…" else "…and out"
+                    setPhase(if (s > 0.84f) "Breathe in…" else "…and out")
                 }
             }
         }
 
-        // A ring that detaches and dissolves outward once per breath cycle.
+        // The inner circle follows a beat behind — layered motion reads as organic, not mechanical.
+        animators += ValueAnimator.ofFloat(0.72f, 1f).apply {
+            duration = half
+            startDelay = 320L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { a ->
+                val s = a.animatedValue as Float
+                innerCircle.scaleX = s; innerCircle.scaleY = s
+            }
+        }
+
+        // A ring detaches and dissolves outward once per breath cycle.
         animators += ValueAnimator.ofFloat(0f, 1f).apply {
             duration = half * 2
             repeatCount = ValueAnimator.INFINITE
@@ -249,7 +281,7 @@ class BreatheActivity : Activity() {
                 val t = a.animatedValue as Float
                 val s = 1f + 0.55f * t
                 rippleRing.scaleX = s; rippleRing.scaleY = s
-                rippleRing.alpha = (1f - t) * 0.5f
+                rippleRing.alpha = (1f - t) * 0.35f
             }
         }
 
@@ -268,12 +300,35 @@ class BreatheActivity : Activity() {
             }
         }
 
+        // Faint embers drifting up through the orb — slow, sparse, alive.
+        repeat(7) {
+            val size = dp(3 + Random.nextInt(5))
+            val particle = View(this).apply {
+                background = circleDrawable(withAlpha(accent, 160))
+                layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
+                translationX = dp(Random.nextInt(-130, 131)).toFloat()
+                alpha = 0f
+            }
+            circleWrap.addView(particle)
+            animators += ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = (5200 + Random.nextInt(3800)).toLong()
+                startDelay = Random.nextInt(4000).toLong()
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener { a ->
+                    val t = a.animatedValue as Float
+                    particle.translationY = dp(150) * (1f - 2f * t)
+                    particle.alpha = kotlin.math.sin(Math.PI * t).toFloat() * 0.65f
+                }
+            }
+        }
+
         animators.forEach { it.start() }
     }
 
     /** The wait is over — let the quiet way in fade up. No checkmark, no reward. */
     private fun revealContinue() {
-        phaseText.text = "Still worth it?"
+        setPhase("Still worth it?")
         continueButton.isEnabled = true
         continueButton.alpha = 0f
         continueButton.visibility = View.VISIBLE
@@ -381,6 +436,14 @@ class BreatheActivity : Activity() {
         shape = GradientDrawable.OVAL
         setColor(Color.TRANSPARENT)
         setStroke(dp(2), stroke)
+    }
+
+    /** Soft radial falloff — reads as light, not as a shape. */
+    private fun glowDrawable(color: Int, radiusDp: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        gradientType = GradientDrawable.RADIAL_GRADIENT
+        gradientRadius = dp(radiusDp).toFloat()
+        colors = intArrayOf(color, Color.TRANSPARENT)
     }
 
     private fun buttonBg(color: Int) = GradientDrawable().apply {
