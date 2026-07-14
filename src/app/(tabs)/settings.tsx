@@ -98,13 +98,14 @@ export default function SettingsScreen() {
       <Card style={{ marginBottom: spacing.sm }}>
         <Heading style={{ fontSize: 15, marginBottom: spacing.md }}>Grace after continuing</Heading>
         <Body dim style={{ marginBottom: spacing.md, fontSize: 13 }}>
-          Once you choose to go into an app, Pause won’t interrupt you again for this long.
+          After you choose to go in, Pause stays quiet for this long — reopens included. Off means
+          every single open gets the pause, no free passes.
         </Body>
         <Chips
-          options={[1, 3, 5, 10, 15, 30]}
+          options={[0, 1, 3, 5, 10, 30]}
           value={settings.sessionMinutes}
           onChange={(v) => actions.updateSettings({ sessionMinutes: v })}
-          format={(v) => `${v}m`}
+          format={(v) => (v === 0 ? 'Off' : `${v}m`)}
         />
       </Card>
 

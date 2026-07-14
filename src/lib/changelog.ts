@@ -13,16 +13,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: '1.4.0',
+    id: '1.4.0b',
     version: '1.4.0',
     date: 'Jul 14, 2026',
     title: 'Purpose-built',
     highlights: [
+      'Grace after continuing can now be Off — every open gets the pause',
       'A day under your usual pace now gets credit, not a scolding',
       'Walking away shows the time it bought back — and repeat opens wait longer',
       'Write your own reflection question; preview the pause from Settings',
       'Long-press a watched app for quick mute / pause-off',
-      'Dozens of small fixes: contrast, touch targets, haptics, battery',
     ],
   },
   {
