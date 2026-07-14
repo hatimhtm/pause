@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, Pressable, TextInput, View } from 'react-native';
+import { Modal, TextInput, View } from 'react-native';
 
 import { DAY_LETTERS, daysSummary, minuteToTime } from '@/lib/format';
+import { tap } from '@/lib/haptics';
 import { actions, newQuietId, useStore } from '@/lib/store';
 import type { QuietHours } from '@/lib/types';
 import { radius, spacing, useAppTheme } from '@/theme';
-import { Body, Button, Card, Heading, Label, Screen, Title } from '@/ui/kit';
+import { Appear, Body, Button, Card, Heading, Label, PressableScale, Screen, Title } from '@/ui/kit';
 
 export default function QuietScreen() {
   const c = useAppTheme();
@@ -30,12 +31,15 @@ export default function QuietScreen() {
       </Body>
 
       {quiet.length === 0 ? (
-        <Card>
-          <Body dim>No quiet hours yet. A bedtime window (say 10pm–7am) is a good start.</Body>
-        </Card>
+        <Appear index={1}>
+          <Card>
+            <Body dim>No quiet hours yet. A bedtime window (say 10pm–7am) is a good start.</Body>
+          </Card>
+        </Appear>
       ) : (
-        quiet.map((q) => (
-          <Card key={q.id} onPress={() => { setEditing(q); setOpen(true); }} style={{ marginBottom: spacing.sm }}>
+        quiet.map((q, qi) => (
+          <Appear key={q.id} index={1 + qi}>
+          <Card onPress={() => { setEditing(q); setOpen(true); }} style={{ marginBottom: spacing.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <Heading style={{ fontSize: 16 }}>{q.label || 'Quiet hours'}</Heading>
@@ -49,6 +53,7 @@ export default function QuietScreen() {
               <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: q.enabled ? c.primary : c.textFaint }} />
             </View>
           </Card>
+          </Appear>
         ))
       )}
 
@@ -106,12 +111,16 @@ function Editor({
         {DAY_LETTERS.map((letter, day) => {
           const on = (value.daysMask & (1 << day)) !== 0;
           return (
-            <Pressable
+            <PressableScale
               key={day}
-              onPress={() => onChange({ ...value, daysMask: value.daysMask ^ (1 << day) })}
+              scaleTo={0.88}
+              onPress={() => {
+                tap();
+                onChange({ ...value, daysMask: value.daysMask ^ (1 << day) });
+              }}
               style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.primary : c.cardAlt }}>
               <Body style={{ color: on ? c.onPrimary : c.text, fontWeight: '700' }}>{letter}</Body>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>
@@ -147,11 +156,17 @@ function TimeStepper({ label, minute, onChange }: { label: string; minute: numbe
 function StepBtn({ icon, onPress, sub }: { icon: 'add' | 'remove'; onPress: () => void; sub: string }) {
   const c = useAppTheme();
   return (
-    <Pressable onPress={onPress} style={{ alignItems: 'center' }}>
+    <PressableScale
+      scaleTo={0.85}
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={{ alignItems: 'center' }}>
       <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c.cardAlt, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={icon} size={16} color={c.text} />
       </View>
       <Body faint style={{ fontSize: 10, marginTop: 2 }}>{sub}</Body>
-    </Pressable>
+    </PressableScale>
   );
 }

@@ -15,7 +15,14 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeInUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
@@ -77,6 +84,45 @@ export function Screen({
   );
 }
 
+// ---- iOS-style pressable ----
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * The press animates in (fast ease-out) and releases back (slower ease-out) instead of
+ * snapping between two states — the iOS button feel. Use for every tappable surface.
+ */
+export function PressableScale({
+  onPress,
+  disabled,
+  scaleTo = 0.97,
+  style,
+  children,
+}: {
+  onPress?: () => void;
+  disabled?: boolean;
+  scaleTo?: number;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const scale = useSharedValue(1);
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <AnimatedPressable
+      disabled={disabled}
+      onPressIn={() => {
+        scale.value = withTiming(scaleTo, { duration: 110, easing: Easing.out(Easing.quad) });
+      }}
+      onPressOut={() => {
+        scale.value = withTiming(1, { duration: 240, easing: Easing.out(Easing.quad) });
+      }}
+      onPress={onPress}
+      style={[style, aStyle]}>
+      {children}
+    </AnimatedPressable>
+  );
+}
+
 // ---- Entrance animation ----
 
 /** Staggered fade-slide-in for list items and sections. `index` sets the stagger slot. */
@@ -91,10 +137,9 @@ export function Appear({
 }) {
   return (
     <Animated.View
-      entering={FadeInDown.springify()
-        .damping(20)
-        .stiffness(180)
-        .delay(Math.min(index, 8) * 45)}
+      entering={FadeInDown.duration(300)
+        .easing(Easing.out(Easing.cubic))
+        .delay(Math.min(index, 8) * 40)}
       style={style}>
       {children}
     </Animated.View>
@@ -157,7 +202,7 @@ export function Card({
 }) {
   const c = useAppTheme();
   const bg = tone === 'primarySoft' ? c.primarySoft : tone === 'accent' ? c.accent + '22' : c.card;
-  const body = (pressed: boolean) => (
+  const body = (
     <View
       style={[
         styles.card,
@@ -169,23 +214,22 @@ export function Card({
           shadowRadius: 10,
           shadowOffset: { width: 0, height: 3 },
           elevation: c.scheme === 'dark' ? 0 : 2,
-          transform: [{ scale: pressed ? 0.985 : 1 }],
         },
         style,
       ]}>
       {children}
     </View>
   );
-  if (!onPress) return body(false);
+  if (!onPress) return body;
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.98}
       onPress={() => {
         tap();
         onPress();
-      }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}>
-      {({ pressed }) => body(pressed)}
-    </Pressable>
+      }}>
+      {body}
+    </PressableScale>
   );
 }
 
@@ -218,7 +262,9 @@ export function Button({
           ? c.primary
           : c.text;
   return (
-    <Pressable
+    <PressableScale
+      disabled={disabled}
+      scaleTo={0.97}
       onPress={
         disabled
           ? undefined
@@ -227,20 +273,19 @@ export function Button({
               onPress?.();
             }
       }
-      style={({ pressed }) => [
+      style={[
         styles.button,
         {
           backgroundColor: bg,
           borderColor: variant === 'ghost' ? c.border : 'transparent',
           borderWidth: variant === 'ghost' ? 1 : 0,
           opacity: disabled ? 0.4 : 1,
-          transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
         },
         style,
       ]}>
       {icon ? <Ionicons name={icon} size={18} color={fg} style={{ marginRight: spacing.sm }} /> : null}
       <Text style={{ color: fg, fontSize: 16, fontWeight: '700' }}>{title}</Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -290,18 +335,15 @@ export function StatTile({
   );
   if (!onPress) return <View style={{ flex: 1 }}>{inner}</View>;
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.975}
+      style={{ flex: 1 }}
       onPress={() => {
         tap();
         onPress();
-      }}
-      style={({ pressed }) => ({
-        flex: 1,
-        opacity: pressed ? 0.94 : 1,
-        transform: [{ scale: pressed ? 0.975 : 1 }],
-      })}>
+      }}>
       {inner}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -404,7 +446,9 @@ export function BarChart({
             {/* keyed by value so fresh data re-plays the grow-in */}
             <Animated.View
               key={`${i}-${v}`}
-              entering={FadeInUp.duration(380).delay(i * 45)}
+              entering={FadeInUp.duration(320)
+                .easing(Easing.out(Easing.cubic))
+                .delay(i * 35)}
               style={{
                 width: '58%',
                 height: Math.max(4, (height - 40) * (v / max)),
@@ -447,32 +491,39 @@ export function Chips<T extends string | number>({
   onChange: (v: T) => void;
   format?: (v: T) => string;
 }) {
-  const c = useAppTheme();
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-      {options.map((opt) => {
-        const active = opt === value;
-        return (
-          <Pressable
-            key={String(opt)}
-            onPress={() => {
-              tap();
-              onChange(opt);
-            }}
-            style={({ pressed }) => ({
-              paddingVertical: 9,
-              paddingHorizontal: spacing.lg,
-              borderRadius: radius.pill,
-              backgroundColor: active ? c.primary : c.cardAlt,
-              transform: [{ scale: pressed ? 0.95 : 1 }],
-            })}>
-            <Text style={{ color: active ? c.onPrimary : c.text, fontWeight: '700', fontSize: 14 }}>
-              {format ? format(opt) : String(opt)}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {options.map((opt) => (
+        <Chip
+          key={String(opt)}
+          label={format ? format(opt) : String(opt)}
+          active={opt === value}
+          onPress={() => {
+            tap();
+            onChange(opt);
+          }}
+        />
+      ))}
     </View>
+  );
+}
+
+function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const c = useAppTheme();
+  return (
+    <PressableScale
+      scaleTo={0.93}
+      onPress={onPress}
+      style={{
+        paddingVertical: 9,
+        paddingHorizontal: spacing.lg,
+        borderRadius: radius.pill,
+        backgroundColor: active ? c.primary : c.cardAlt,
+      }}>
+      <Text style={{ color: active ? c.onPrimary : c.text, fontWeight: '700', fontSize: 14 }}>
+        {label}
+      </Text>
+    </PressableScale>
   );
 }
 
@@ -507,17 +558,14 @@ export function GradientHeader({
   );
   if (!onPress) return inner;
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.985}
       onPress={() => {
         tap();
         onPress();
-      }}
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.95 : 1,
-        transform: [{ scale: pressed ? 0.985 : 1 }],
-      })}>
+      }}>
       {inner}
-    </Pressable>
+    </PressableScale>
   );
 }
 

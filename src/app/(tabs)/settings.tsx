@@ -7,9 +7,10 @@ import { useState } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 
 import { CHANGELOG } from '@/lib/changelog';
+import { tap } from '@/lib/haptics';
 import { actions, useStore } from '@/lib/store';
 import { radius, spacing, useAppTheme } from '@/theme';
-import { Appear, Body, Card, Chips, Heading, Label, Screen, Title, ToggleRow } from '@/ui/kit';
+import { Appear, Body, Card, Chips, Heading, Label, PressableScale, Screen, Title, ToggleRow } from '@/ui/kit';
 
 const BREATH_PRESETS = [
   { name: 'Calm teal', colorTop: '#06403F', colorBottom: '#0E7C7B', colorAccent: '#BFE3E2' },
@@ -110,11 +111,15 @@ export default function SettingsScreen() {
         <Label style={{ marginBottom: spacing.sm }}>Theme</Label>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
           {BREATH_PRESETS.map((p) => {
-            const active = breath.colorBottom === p.colorBottom;
+            const active = breath.colorBottom === p.colorBottom && breath.colorTop === p.colorTop;
             return (
-              <Pressable
+              <PressableScale
                 key={p.name}
-                onPress={() => actions.updateBreath({ colorTop: p.colorTop, colorBottom: p.colorBottom, colorAccent: p.colorAccent })}
+                scaleTo={0.9}
+                onPress={() => {
+                  tap();
+                  actions.updateBreath({ colorTop: p.colorTop, colorBottom: p.colorBottom, colorAccent: p.colorAccent });
+                }}
                 style={{ alignItems: 'center' }}>
                 <View
                   style={{
@@ -127,7 +132,7 @@ export default function SettingsScreen() {
                   }}
                 />
                 <Body faint style={{ fontSize: 10, marginTop: 4 }}>{p.name}</Body>
-              </Pressable>
+              </PressableScale>
             );
           })}
         </View>

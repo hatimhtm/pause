@@ -1,12 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { useEffect } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
 import { useAppTheme } from '@/theme';
+import { PressableScale } from '@/ui/kit';
 
 const TABS: Record<string, { icon: keyof typeof Ionicons.glyphMap; label: string }> = {
   index: { icon: 'pulse', label: 'Today' },
@@ -20,7 +26,7 @@ const BAR_PADDING = 5;
 
 /**
  * Floating glass pill: content scrolls underneath the translucent bar, and a solid pill
- * springs across to whichever tab is active.
+ * glides to whichever tab is active — a short ease-out, no bounce, never past the edge.
  */
 function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
   const c = useAppTheme();
@@ -29,12 +35,9 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
 
   const x = useSharedValue(state.index * ITEM_WIDTH);
   useEffect(() => {
-    // overshootClamping keeps the pill inside the bar — a bouncy spring would fly past the
-    // last tab and out of the pill's bounds.
-    x.value = withSpring(state.index * ITEM_WIDTH, {
-      damping: 24,
-      stiffness: 260,
-      overshootClamping: true,
+    x.value = withTiming(state.index * ITEM_WIDTH, {
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
     });
   }, [state.index, x]);
   const pillStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
@@ -81,10 +84,9 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
           const focused = state.index === i;
           const tab = TABS[route.name] ?? { icon: 'ellipse' as const, label: route.name };
           return (
-            <Pressable
+            <PressableScale
               key={route.key}
-              accessibilityRole="button"
-              accessibilityState={focused ? { selected: true } : {}}
+              scaleTo={0.92}
               onPress={() => {
                 tap();
                 const event = navigation.emit({
@@ -94,12 +96,7 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
                 });
                 if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
               }}
-              style={({ pressed }) => ({
-                width: ITEM_WIDTH,
-                alignItems: 'center',
-                paddingVertical: 8,
-                transform: [{ scale: pressed ? 0.94 : 1 }],
-              })}>
+              style={{ width: ITEM_WIDTH, alignItems: 'center', paddingVertical: 8 }}>
               <Ionicons name={tab.icon} size={20} color={focused ? c.onPrimary : c.textDim} />
               <Text
                 style={{
@@ -110,7 +107,7 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
                 }}>
                 {tab.label}
               </Text>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>
