@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Native } from './native';
 import { DAY_LETTERS, startOfDayNDaysAgo, startOfToday } from './format';
@@ -26,10 +26,10 @@ export type Dashboard = {
   weekly: DayStat[];
 };
 
-export function computeDashboard(apps: Record<string, MonitoredApp>): Dashboard {
+/** Today-only numbers — three native reads, cheap enough to run on the JS thread at paint time. */
+function computeToday(apps: Record<string, MonitoredApp>): Omit<Dashboard, 'weekly'> {
   const usageAccess = Native.hasUsageAccess();
   const monitored = Object.values(apps);
-  const pkgs = new Set(monitored.map((a) => a.packageName));
   const todayStart = startOfToday();
   const now = Date.now();
 
@@ -58,19 +58,6 @@ export function computeDashboard(apps: Record<string, MonitoredApp>): Dashboard 
     }))
     .sort((x, y) => y.minutes - x.minutes || y.attempts - x.attempts);
 
-  const weekly: DayStat[] = [];
-  if (usageAccess) {
-    for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
-      const start = startOfDayNDaysAgo(daysAgo);
-      const end = daysAgo === 0 ? now : startOfDayNDaysAgo(daysAgo - 1);
-      const dayUsage = Native.getUsage(start, end);
-      let minutes = 0;
-      for (const pkg of pkgs) minutes += (dayUsage[pkg] ?? 0) / 60000;
-      const dow = new Date(start).getDay();
-      weekly.push({ label: DAY_LETTERS[dow], minutes: Math.round(minutes) });
-    }
-  }
-
   return {
     usageAccess,
     perApp,
@@ -78,15 +65,55 @@ export function computeDashboard(apps: Record<string, MonitoredApp>): Dashboard 
     totalAttempts: perApp.reduce((s, a) => s + a.attempts, 0),
     totalBackedOut: perApp.reduce((s, a) => s + a.backedOut, 0),
     totalContinued: perApp.reduce((s, a) => s + a.continued, 0),
-    weekly,
   };
 }
 
-/** Recompute on demand (call refresh() on screen focus). Native reads are synchronous. */
+/** Seven full-day usage scans — the expensive part; keep it off the first paint. */
+function computeWeekly(apps: Record<string, MonitoredApp>): DayStat[] {
+  if (!Native.hasUsageAccess()) return [];
+  const pkgs = Object.keys(apps);
+  const now = Date.now();
+  const weekly: DayStat[] = [];
+  for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
+    const start = startOfDayNDaysAgo(daysAgo);
+    const end = daysAgo === 0 ? now : startOfDayNDaysAgo(daysAgo - 1);
+    const dayUsage = Native.getUsage(start, end);
+    let minutes = 0;
+    for (const pkg of pkgs) minutes += (dayUsage[pkg] ?? 0) / 60000;
+    weekly.push({ label: DAY_LETTERS[new Date(start).getDay()], minutes: Math.round(minutes) });
+  }
+  return weekly;
+}
+
+// Last computed dashboard, kept for the session so returning to the tab paints instantly
+// with yesterday's-second data while fresh numbers are computed.
+let cached: Dashboard | null = null;
+
+/** Recompute on demand (call refresh() on screen focus). Paints cheap data now, weekly async. */
 export function useDashboard(apps: Record<string, MonitoredApp>) {
-  const [data, setData] = useState<Dashboard | null>(null);
+  const [data, setData] = useState<Dashboard | null>(cached);
+  const gen = useRef(0);
+
   const refresh = useCallback(() => {
-    setData(computeDashboard(apps));
+    const today = computeToday(apps);
+    const snapshot: Dashboard = { ...today, weekly: cached?.weekly ?? [] };
+    cached = snapshot;
+    setData(snapshot);
+    const token = ++gen.current;
+    setTimeout(() => {
+      if (token !== gen.current) return; // superseded or unmounted
+      const full: Dashboard = { ...today, weekly: computeWeekly(apps) };
+      cached = full;
+      setData(full);
+    }, 60);
   }, [apps]);
+
+  useEffect(
+    () => () => {
+      gen.current++;
+    },
+    [],
+  );
+
   return { data, refresh };
 }

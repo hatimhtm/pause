@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useStore } from '@/lib/store';
 import type { MonitoredApp } from '@/lib/types';
 import { spacing, useAppTheme } from '@/theme';
-import { AppAvatar, Body, Button, Card, Heading, Screen, Title } from '@/ui/kit';
+import { Appear, AppAvatar, Body, Button, Card, Heading, Screen, Title } from '@/ui/kit';
 
 function summarize(app: MonitoredApp): string {
   const parts: string[] = [];
@@ -37,19 +37,21 @@ export default function AppsScreen() {
           <Button title="Choose apps" icon="add" onPress={() => router.push('/picker')} style={{ marginTop: spacing.lg }} />
         </Card>
       ) : (
-        list.map((app) => (
-          <Card key={app.packageName} onPress={() => router.push(`/config/${app.packageName}`)} style={{ marginBottom: spacing.sm }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <AppAvatar icon={app.icon} />
-              <View style={{ flex: 1, marginLeft: spacing.md }}>
-                <Heading style={{ fontSize: 16 }}>{app.label}</Heading>
-                <Body faint style={{ fontSize: 12.5 }}>
-                  {summarize(app)}
-                </Body>
+        list.map((app, i) => (
+          <Appear key={app.packageName} index={i}>
+            <Card onPress={() => router.push(`/config/${app.packageName}`)} style={{ marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <AppAvatar icon={app.icon} />
+                <View style={{ flex: 1, marginLeft: spacing.md }}>
+                  <Heading style={{ fontSize: 16 }}>{app.label}</Heading>
+                  <Body faint style={{ fontSize: 12.5 }}>
+                    {summarize(app)}
+                  </Body>
+                </View>
+                <Body faint>›</Body>
               </View>
-              <Body faint>›</Body>
-            </View>
-          </Card>
+            </Card>
+          </Appear>
         ))
       )}
     </Screen>

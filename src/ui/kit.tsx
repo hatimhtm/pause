@@ -5,6 +5,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -14,6 +15,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { radius, spacing, useAppTheme, useResponsive } from '@/theme';
@@ -24,10 +26,14 @@ export function Screen({
   children,
   scroll = true,
   edges = ['top', 'left', 'right'],
+  refreshing = false,
+  onRefresh,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   edges?: ('top' | 'bottom' | 'left' | 'right')[];
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   const c = useAppTheme();
   const r = useResponsive();
@@ -41,13 +47,45 @@ export function Screen({
       {scroll ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: spacing.xxxl * 2 }}>
+          contentContainerStyle={{ paddingBottom: spacing.xxxl * 2 }}
+          refreshControl={
+            onRefresh ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[c.primary]}
+                progressBackgroundColor={c.bgElevated}
+                tintColor={c.primary}
+              />
+            ) : undefined
+          }>
           {inner}
         </ScrollView>
       ) : (
         <View style={{ flex: 1 }}>{inner}</View>
       )}
     </SafeAreaView>
+  );
+}
+
+// ---- Entrance animation ----
+
+/** Staggered fade-slide-in for list items and sections. `index` sets the stagger slot. */
+export function Appear({
+  children,
+  index = 0,
+  style,
+}: {
+  children: React.ReactNode;
+  index?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(320).delay(Math.min(index, 8) * 55)}
+      style={style}>
+      {children}
+    </Animated.View>
   );
 }
 
@@ -327,7 +365,10 @@ export function BarChart({
                 {formatValue(v)}
               </Text>
             ) : null}
-            <View
+            {/* keyed by value so fresh data re-plays the grow-in */}
+            <Animated.View
+              key={`${i}-${v}`}
+              entering={FadeInUp.duration(380).delay(i * 45)}
               style={{
                 width: '58%',
                 height: Math.max(4, (height - 40) * (v / max)),

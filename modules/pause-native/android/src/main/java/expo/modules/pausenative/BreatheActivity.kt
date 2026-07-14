@@ -1,5 +1,6 @@
 package expo.modules.pausenative
 
+import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -51,6 +53,9 @@ class BreatheActivity : Activity() {
                 enableContinue()
             } else {
                 countdownText.text = remaining.toString()
+                countdownText.scaleX = 1.14f
+                countdownText.scaleY = 1.14f
+                countdownText.animate().scaleX(1f).scaleY(1f).setDuration(260).start()
                 ui.postDelayed(this, 1000)
             }
         }
@@ -70,11 +75,16 @@ class BreatheActivity : Activity() {
         val reflection = intent.getStringExtra(EXTRA_REFLECTION_TEXT) ?: "Why are you opening it?"
         continueLabelTemplate = intent.getStringExtra(EXTRA_CONTINUE_LABEL) ?: "Open anyway"
         val dismissLabel = intent.getStringExtra(EXTRA_DISMISS_LABEL) ?: "Not now"
-        val top = parseColor(intent.getStringExtra(EXTRA_COLOR_TOP), "#06403F")
-        val bottom = parseColor(intent.getStringExtra(EXTRA_COLOR_BOTTOM), "#0E7C7B")
+        topColor = parseColor(intent.getStringExtra(EXTRA_COLOR_TOP), "#06403F")
+        bottomColor = parseColor(intent.getStringExtra(EXTRA_COLOR_BOTTOM), "#0E7C7B")
         accent = parseColor(intent.getStringExtra(EXTRA_COLOR_ACCENT), "#BFE3E2")
 
-        setContentView(buildUi(title, reflection, showReflection, continueLabelTemplate, dismissLabel, top, bottom))
+        val content = buildUi(title, reflection, showReflection, continueLabelTemplate, dismissLabel, topColor, bottomColor)
+        setContentView(content)
+        // Ease in instead of snapping over the app that just opened.
+        content.alpha = 0f
+        content.translationY = dp(10).toFloat()
+        content.animate().alpha(1f).translationY(0f).setDuration(380).start()
         startBreathingAnimation()
         ui.postDelayed(tick, 1000)
         loadGuiltLines()
@@ -89,13 +99,14 @@ class BreatheActivity : Activity() {
         top: Int,
         bottom: Int,
     ): View {
+        bgDrawable = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(top, bottom),
+        )
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(top, bottom),
-            )
+            background = bgDrawable
             setPadding(dp(28), dp(48), dp(28), dp(36))
         }
 
@@ -130,6 +141,12 @@ class BreatheActivity : Activity() {
 
         // Middle: breathing circles + countdown
         val circleWrap = FrameLayout(this)
+        rippleRing = View(this).apply {
+            background = ringDrawable(withAlpha(accent, 200))
+            layoutParams = FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER)
+            alpha = 0f
+        }
+        circleWrap.addView(rippleRing)
         outerCircle = View(this).apply {
             background = circleDrawable(withAlpha(accent, 46))
             layoutParams = FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER)
@@ -198,14 +215,23 @@ class BreatheActivity : Activity() {
 
     private lateinit var outerCircle: View
     private lateinit var innerCircle: FrameLayout
+    private lateinit var rippleRing: View
+    private lateinit var bgDrawable: GradientDrawable
+    private var topColor = Color.parseColor("#06403F")
+    private var bottomColor = Color.parseColor("#0E7C7B")
+    private val animators = ArrayList<ValueAnimator>()
+    private val argb = ArgbEvaluator()
 
     private fun startBreathingAnimation() {
-        val half = (breathSeconds.coerceAtLeast(4) * 1000L) / 2
-        val animator = ValueAnimator.ofFloat(0.68f, 1f).apply {
+        // 4s per half-breath reads as calm regardless of how long the wait is.
+        val half = 4000L
+
+        // Circles swell and shrink with an eased curve — the linear version looked mechanical.
+        animators += ValueAnimator.ofFloat(0.68f, 1f).apply {
             duration = half
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
-            interpolator = LinearInterpolator()
+            interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener { a ->
                 val s = a.animatedValue as Float
                 outerCircle.scaleX = s; outerCircle.scaleY = s
@@ -215,7 +241,36 @@ class BreatheActivity : Activity() {
                 }
             }
         }
-        animator.start()
+
+        // A ring that detaches and dissolves outward once per breath cycle.
+        animators += ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = half * 2
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = LinearInterpolator()
+            addUpdateListener { a ->
+                val t = a.animatedValue as Float
+                val s = 1f + 0.55f * t
+                rippleRing.scaleX = s; rippleRing.scaleY = s
+                rippleRing.alpha = (1f - t) * 0.5f
+            }
+        }
+
+        // The gradient itself breathes, very slowly, between its two colours.
+        animators += ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 9000L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { a ->
+                val t = a.animatedValue as Float
+                bgDrawable.colors = intArrayOf(
+                    argb.evaluate(0.30f * t, topColor, bottomColor) as Int,
+                    argb.evaluate(0.20f * t, bottomColor, topColor) as Int,
+                )
+            }
+        }
+
+        animators.forEach { it.start() }
     }
 
     private fun enableContinue() {
@@ -299,6 +354,8 @@ class BreatheActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        animators.forEach { it.cancel() }
+        animators.clear()
         io.shutdown()
         super.onDestroy()
     }
@@ -316,6 +373,12 @@ class BreatheActivity : Activity() {
     private fun circleDrawable(color: Int) = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(color)
+    }
+
+    private fun ringDrawable(stroke: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(Color.TRANSPARENT)
+        setStroke(dp(2), stroke)
     }
 
     private fun buttonBg(color: Int) = GradientDrawable().apply {
