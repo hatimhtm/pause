@@ -1,19 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
-import { useCallback, useState } from 'react';
-import { Text, ToastAndroid, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Modal, Text, ToastAndroid, View } from 'react-native';
 
+import { CHANGELOG, CURRENT_CHANGELOG_ID } from '@/lib/changelog';
 import { formatMinutes } from '@/lib/format';
 import { usePermissions } from '@/lib/permissions';
 import { useDashboard } from '@/lib/stats';
-import { useStore } from '@/lib/store';
+import { actions, useHydrated, useStore } from '@/lib/store';
 import { spacing, useAppTheme } from '@/theme';
 import {
   Appear,
   AppAvatar,
   BarChart,
   Body,
+  Button,
   Card,
   GradientHeader,
   Heading,
@@ -35,13 +37,49 @@ function headline(totalMinutes: number, backedOut: number, appCount: number, usa
   return 'Nothing yet today. Keep it that way.';
 }
 
+function WhatsNewCard({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const c = useAppTheme();
+  const entry = CHANGELOG[0];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#0009', justifyContent: 'center', padding: spacing.xl }}>
+        <View style={{ backgroundColor: c.bgElevated, borderRadius: 24, padding: spacing.xl }}>
+          <Label style={{ color: c.primary }}>What’s new · v{entry.version}</Label>
+          <Heading style={{ fontSize: 22, marginTop: 4, marginBottom: spacing.md }}>{entry.title}</Heading>
+          {entry.highlights.map((h, i) => (
+            <View key={i} style={{ flexDirection: 'row', marginBottom: spacing.sm }}>
+              <Ionicons name="sparkles" size={14} color={c.primary} style={{ marginTop: 3, marginRight: spacing.sm }} />
+              <Body dim style={{ flex: 1, fontSize: 14 }}>{h}</Body>
+            </View>
+          ))}
+          <Button title="Nice" onPress={onClose} style={{ marginTop: spacing.lg }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function TodayScreen() {
   const c = useAppTheme();
   const router = useRouter();
-  const { apps } = useStore();
+  const hydrated = useHydrated();
+  const { apps, settings } = useStore();
   const { data, refresh } = useDashboard(apps);
   const { perm, refresh: refreshPerm } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
+  const [showNews, setShowNews] = useState(false);
+
+  // One-time "what's new" card after an update lands.
+  useEffect(() => {
+    if (hydrated && settings.onboardingComplete && settings.lastSeenChangelog !== CURRENT_CHANGELOG_ID) {
+      setShowNews(true);
+    }
+  }, [hydrated, settings.onboardingComplete, settings.lastSeenChangelog]);
+
+  const closeNews = useCallback(() => {
+    setShowNews(false);
+    actions.updateSettings({ lastSeenChangelog: CURRENT_CHANGELOG_ID });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -76,6 +114,7 @@ export default function TodayScreen() {
 
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
+      <WhatsNewCard visible={showNews} onClose={closeNews} />
       <Appear index={0}>
         <View style={{ marginTop: spacing.lg, marginBottom: spacing.lg }}>
           <Title>Today</Title>

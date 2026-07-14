@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncExternalStore } from 'react';
 
+import { CURRENT_CHANGELOG_ID } from './changelog';
 import { Native } from './native';
 import type { BreathStyle, MonitoredApp, PauseState, QuietHours, Settings } from './types';
 
@@ -159,7 +160,15 @@ export const actions = {
     set({ ...state, breath: { ...state.breath, ...patch } });
   },
   completeOnboarding() {
-    set({ ...state, settings: { ...state.settings, onboardingComplete: true } });
+    // A fresh install shouldn't be greeted with "what's new" — mark the current entry seen.
+    set({
+      ...state,
+      settings: {
+        ...state.settings,
+        onboardingComplete: true,
+        lastSeenChangelog: CURRENT_CHANGELOG_ID,
+      },
+    });
   },
 };
 

@@ -1,11 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
 import { useState } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 
+import { CHANGELOG } from '@/lib/changelog';
 import { actions, useStore } from '@/lib/store';
 import { radius, spacing, useAppTheme } from '@/theme';
-import { Body, Card, Chips, Heading, Label, Screen, Title, ToggleRow } from '@/ui/kit';
+import { Appear, Body, Card, Chips, Heading, Label, Screen, Title, ToggleRow } from '@/ui/kit';
 
 const BREATH_PRESETS = [
   { name: 'Calm teal', colorTop: '#06403F', colorBottom: '#0E7C7B', colorAccent: '#BFE3E2' },
@@ -21,6 +24,14 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { settings, breath } = useStore();
   const [checking, setChecking] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+
+  const appVersion = Constants.expoConfig?.version ?? '?';
+  const otaTag = Updates.updateId
+    ? `update ${Updates.updateId.slice(0, 8)}${
+        Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleDateString()}` : ''
+      }`
+    : 'built-in bundle';
 
   const checkUpdates = async () => {
     if (!Updates.isEnabled) {
@@ -129,6 +140,50 @@ export default function SettingsScreen() {
         <Body dim style={{ fontSize: 13, marginTop: 2 }}>
           Pull the latest version over the air.
         </Body>
+      </Card>
+
+      <Card style={{ marginBottom: spacing.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Heading style={{ fontSize: 15 }}>Version</Heading>
+            <Body dim style={{ fontSize: 13, marginTop: 2 }}>
+              v{appVersion} · {otaTag}
+            </Body>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => setLogOpen((v) => !v)}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md }}>
+          <Body style={{ color: c.primary, fontSize: 14, fontWeight: '700', flex: 1 }}>
+            What’s changed
+          </Body>
+          <Ionicons name={logOpen ? 'chevron-up' : 'chevron-down'} size={18} color={c.primary} />
+        </Pressable>
+        {logOpen
+          ? CHANGELOG.map((entry, idx) => (
+              <Appear key={entry.id} index={idx}>
+                <View
+                  style={{
+                    marginTop: spacing.md,
+                    paddingTop: spacing.md,
+                    borderTopWidth: 1,
+                    borderTopColor: c.border,
+                  }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                    <Heading style={{ fontSize: 14.5, flex: 1 }}>
+                      v{entry.version} — {entry.title}
+                    </Heading>
+                    <Body faint style={{ fontSize: 11.5 }}>{entry.date}</Body>
+                  </View>
+                  {entry.highlights.map((h, i) => (
+                    <Body key={i} dim style={{ fontSize: 13, marginTop: 4 }}>
+                      ·  {h}
+                    </Body>
+                  ))}
+                </View>
+              </Appear>
+            ))
+          : null}
       </Card>
 
       <Card>

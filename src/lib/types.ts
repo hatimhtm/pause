@@ -40,6 +40,8 @@ export type Settings = {
   sessionMinutes: number;
   defaultBreathSeconds: number;
   haptics: boolean;
+  /** Changelog id last shown in the "what's new" popup; unset = never shown. */
+  lastSeenChangelog?: string;
 };
 
 export type PauseState = {
