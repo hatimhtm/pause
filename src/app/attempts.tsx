@@ -1,22 +1,20 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
-import { computeEventHistory, type EventHistory } from '@/lib/stats';
-import { useStore } from '@/lib/store';
-import { spacing, useAppTheme } from '@/theme';
-import { Appear, AppAvatar, BarChart, Body, Card, Heading, Label, Screen, Spinner, StatTile } from '@/ui/kit';
+import { computeAndCacheHistory, getCachedHistory, type EventHistory } from '@/lib/stats';
+import { useStoreSelector } from '@/lib/store';
+import { spacing } from '@/theme';
+import { Appear, AppAvatar, BarChart, Body, Card, Heading, Label, PageHeader, Screen, Spinner, StatTile } from '@/ui/kit';
 
 /** Every time the pause screen stood between her and the app — the raw pull of the habit. */
 export default function AttemptsScreen() {
-  const c = useAppTheme();
   const router = useRouter();
-  const { apps } = useStore();
-  const [data, setData] = useState<EventHistory | null>(null);
+  const apps = useStoreSelector((s) => s.apps);
+  const [data, setData] = useState<EventHistory | null>(() => getCachedHistory(apps));
   const [refreshing, setRefreshing] = useState(false);
 
-  const compute = useCallback(() => setData(computeEventHistory(apps)), [apps]);
+  const compute = useCallback(() => setData(computeAndCacheHistory(apps)), [apps]);
 
   useEffect(() => {
     const t = setTimeout(compute, 40);
@@ -37,15 +35,11 @@ export default function AttemptsScreen() {
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Appear index={0}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.xs }}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={{ marginRight: spacing.md }}>
-            <Ionicons name="chevron-back" size={26} color={c.text} />
-          </Pressable>
-          <Heading style={{ fontSize: 22 }}>Reaching for them</Heading>
-        </View>
-        <Body dim style={{ marginBottom: spacing.lg, marginLeft: 38 }}>
-          Every time the pause screen appeared — the pull of the habit itself.
-        </Body>
+        <PageHeader
+          title="Reaching for them"
+          subtitle="Every time the pause screen appeared — the pull of the habit itself."
+          onBack={() => router.back()}
+        />
       </Appear>
 
       {!data ? (
@@ -64,7 +58,7 @@ export default function AttemptsScreen() {
               <Heading style={{ fontSize: 16, marginBottom: spacing.md }}>Last 14 days</Heading>
               <BarChart
                 values={last14.map((d) => d.shown)}
-                labels={last14.map((d, i) => (i % 2 === 0 ? d.label.split(' ')[1] ?? d.label : ''))}
+                labels={last14.map((d, i) => (i % 2 === 0 ? String(d.dayOfMonth) : ''))}
                 activeIndex={last14.length - 1}
                 formatValue={(v) => String(v)}
               />
@@ -80,7 +74,9 @@ export default function AttemptsScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <AppAvatar icon={a.icon} />
                   <View style={{ flex: 1, marginLeft: spacing.md }}>
-                    <Heading style={{ fontSize: 16 }}>{a.label}</Heading>
+                    <Heading style={{ fontSize: 16 }} numberOfLines={1}>
+                      {a.label}
+                    </Heading>
                     <Body faint style={{ fontSize: 12.5 }}>
                       {a.continued} went in · {a.backedOut} walked away
                     </Body>

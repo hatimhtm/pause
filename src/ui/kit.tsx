@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useRef } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,8 +11,10 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
   type StyleProp,
+  type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
@@ -19,13 +22,16 @@ import Animated, {
   Easing,
   FadeInDown,
   FadeInUp,
+  interpolateColor,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
+import { setActiveScroller } from '@/lib/scrollTop';
 import { radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 // ---- Screen scaffold ----
@@ -45,6 +51,14 @@ export function Screen({
 }) {
   const c = useAppTheme();
   const r = useResponsive();
+  // Tapping the already-active tab scrolls back to top — universal muscle memory.
+  const scrollRef = useRef<ScrollView>(null);
+  useFocusEffect(
+    useCallback(() => {
+      setActiveScroller(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+      return () => setActiveScroller(null);
+    }, []),
+  );
   const inner = (
     <View
       style={{
@@ -61,6 +75,7 @@ export function Screen({
     <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={edges}>
       {scroll ? (
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           // room for the floating pill tab bar plus breathing space
           contentContainerStyle={{ paddingBottom: spacing.xxxl * 3 }}
@@ -94,22 +109,36 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
  */
 export function PressableScale({
   onPress,
+  onLongPress,
   disabled,
   scaleTo = 0.97,
   style,
   children,
+  accessibilityLabel,
+  accessibilityRole = 'button',
+  accessibilityState,
+  hitSlop,
 }: {
   onPress?: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   scaleTo?: number;
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
+  accessibilityLabel?: string;
+  accessibilityRole?: 'button' | 'tab' | 'switch' | 'link';
+  accessibilityState?: { selected?: boolean; disabled?: boolean; expanded?: boolean };
+  hitSlop?: number;
 }) {
   const scale = useSharedValue(1);
   const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
     <AnimatedPressable
       disabled={disabled}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={accessibilityState}
+      hitSlop={hitSlop}
       onPressIn={() => {
         scale.value = withTiming(scaleTo, { duration: 110, easing: Easing.out(Easing.quad) });
       }}
@@ -117,6 +146,7 @@ export function PressableScale({
         scale.value = withTiming(1, { duration: 240, easing: Easing.out(Easing.quad) });
       }}
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[style, aStyle]}>
       {children}
     </AnimatedPressable>
@@ -154,9 +184,21 @@ export function Title({ children, style }: { children: React.ReactNode; style?: 
   return <Text style={[{ color: c.text, fontSize: 30 * r.scale, fontWeight: '800', letterSpacing: -0.5 }, style]}>{children}</Text>;
 }
 
-export function Heading({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+export function Heading({
+  children,
+  style,
+  numberOfLines,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<TextStyle>;
+  numberOfLines?: number;
+}) {
   const c = useAppTheme();
-  return <Text style={[{ color: c.text, fontSize: 20, fontWeight: '700' }, style]}>{children}</Text>;
+  return (
+    <Text numberOfLines={numberOfLines} style={[{ color: c.text, fontSize: 20, fontWeight: '700' }, style]}>
+      {children}
+    </Text>
+  );
 }
 
 export function Body({
@@ -187,18 +229,97 @@ export function Label({ children, style }: { children: React.ReactNode; style?: 
   );
 }
 
+// ---- Page header (sub-screens) ----
+
+export function PageHeader({
+  title,
+  subtitle,
+  onBack,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  right?: React.ReactNode;
+}) {
+  const c = useAppTheme();
+  const inset = 26 + spacing.md; // back icon + gap, so the subtitle aligns with the title
+  return (
+    <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {onBack ? (
+          <PressableScale
+            scaleTo={0.9}
+            hitSlop={12}
+            accessibilityLabel="Back"
+            onPress={() => {
+              tap();
+              onBack();
+            }}
+            style={{ marginRight: spacing.md }}>
+            <Ionicons name="chevron-back" size={26} color={c.text} />
+          </PressableScale>
+        ) : null}
+        <Heading style={{ fontSize: 22, flex: 1 }} numberOfLines={1}>
+          {title}
+        </Heading>
+        {right}
+      </View>
+      {subtitle ? (
+        <Body dim style={{ marginTop: spacing.xs, marginLeft: onBack ? inset : 0 }}>
+          {subtitle}
+        </Body>
+      ) : null}
+    </View>
+  );
+}
+
+// ---- Input ----
+
+export function Input({
+  icon,
+  style,
+  ...props
+}: TextInputProps & { icon?: keyof typeof Ionicons.glyphMap }) {
+  const c = useAppTheme();
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: c.card,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: c.border,
+        paddingHorizontal: spacing.md,
+      }}>
+      {icon ? <Ionicons name={icon} size={18} color={c.textFaint} style={{ marginRight: spacing.sm }} /> : null}
+      <TextInput
+        placeholderTextColor={c.textFaint}
+        {...props}
+        style={[{ flex: 1, color: c.text, paddingVertical: 12, fontSize: 16 }, style]}
+      />
+    </View>
+  );
+}
+
 // ---- Card ----
 
 export function Card({
   children,
   onPress,
+  onLongPress,
   style,
   tone = 'card',
+  haptic = true,
 }: {
   children: React.ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: StyleProp<ViewStyle>;
   tone?: 'card' | 'primarySoft' | 'accent';
+  /** Set false when the caller fires its own, differentiated haptic. */
+  haptic?: boolean;
 }) {
   const c = useAppTheme();
   const bg = tone === 'primarySoft' ? c.primarySoft : tone === 'accent' ? c.accent + '22' : c.card;
@@ -220,14 +341,19 @@ export function Card({
       {children}
     </View>
   );
-  if (!onPress) return body;
+  if (!onPress && !onLongPress) return body;
   return (
     <PressableScale
       scaleTo={0.98}
-      onPress={() => {
-        tap();
-        onPress();
-      }}>
+      onPress={
+        onPress
+          ? () => {
+              if (haptic) tap();
+              onPress();
+            }
+          : undefined
+      }
+      onLongPress={onLongPress}>
       {body}
     </PressableScale>
   );
@@ -265,6 +391,8 @@ export function Button({
     <PressableScale
       disabled={disabled}
       scaleTo={0.97}
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: !!disabled }}
       onPress={
         disabled
           ? undefined
@@ -297,12 +425,14 @@ export function StatTile({
   icon,
   tone = 'card',
   onPress,
+  accessibilityLabel,
 }: {
   value: string;
   label: string;
   icon?: keyof typeof Ionicons.glyphMap;
   tone?: 'card' | 'primary';
   onPress?: () => void;
+  accessibilityLabel?: string;
 }) {
   const c = useAppTheme();
   const primary = tone === 'primary';
@@ -338,6 +468,7 @@ export function StatTile({
     <PressableScale
       scaleTo={0.975}
       style={{ flex: 1 }}
+      accessibilityLabel={accessibilityLabel ?? `${value} ${label}`}
       onPress={() => {
         tap();
         onPress();
@@ -398,11 +529,12 @@ export function ToggleRow({
         </View>
         <Switch
           value={value}
+          accessibilityLabel={title}
           onValueChange={(v) => {
             tap();
             onValueChange(v);
           }}
-          trackColor={{ true: c.primary, false: c.cardAlt }}
+          trackColor={{ true: c.switchOn, false: c.cardAlt }}
           thumbColor="#fff"
         />
       </View>
@@ -411,6 +543,31 @@ export function ToggleRow({
 }
 
 // ---- Bar chart ----
+
+function ChartBar({
+  heightPx,
+  active,
+  index,
+}: {
+  heightPx: number;
+  active: boolean;
+  index: number;
+}) {
+  const c = useAppTheme();
+  // Selection glides between the two states instead of snapping — the tab-pill curve.
+  const t = useDerivedValue(() => withTiming(active ? 1 : 0, { duration: 160 }));
+  const aStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(t.value, [0, 1], [c.primary + '55', c.primary]),
+  }));
+  return (
+    <Animated.View
+      entering={FadeInUp.duration(320)
+        .easing(Easing.out(Easing.cubic))
+        .delay(index * 35)}
+      style={[{ width: '58%', height: heightPx, borderRadius: 7 }, aStyle]}
+    />
+  );
+}
 
 export function BarChart({
   values,
@@ -433,7 +590,7 @@ export function BarChart({
   const max = Math.max(1, ...values);
   const highlight = activeIndex ?? values.indexOf(Math.max(...values));
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height }} accessibilityRole="none">
       {values.map((v, i) => {
         const active = i === highlight;
         const bar = (
@@ -443,19 +600,7 @@ export function BarChart({
                 {formatValue(v)}
               </Text>
             ) : null}
-            {/* keyed by value so fresh data re-plays the grow-in */}
-            <Animated.View
-              key={`${i}-${v}`}
-              entering={FadeInUp.duration(320)
-                .easing(Easing.out(Easing.cubic))
-                .delay(i * 35)}
-              style={{
-                width: '58%',
-                height: Math.max(4, (height - 40) * (v / max)),
-                backgroundColor: active ? c.primary : c.primary + '55',
-                borderRadius: 7,
-              }}
-            />
+            <ChartBar heightPx={Math.max(4, (height - 40) * (v / max))} active={active} index={i} />
             <Text
               style={{
                 color: active ? c.text : c.textFaint,
@@ -469,7 +614,16 @@ export function BarChart({
         );
         if (!onBarPress) return <React.Fragment key={i}>{bar}</React.Fragment>;
         return (
-          <Pressable key={i} onPress={() => onBarPress(i)} style={{ flex: 1, height: '100%' }}>
+          <Pressable
+            key={i}
+            accessibilityRole="button"
+            accessibilityLabel={`${labels[i]}${formatValue ? `, ${formatValue(v)}` : ''}`}
+            onPress={() => {
+              if (i === highlight) return; // re-tapping the selection does nothing
+              tap();
+              onBarPress(i);
+            }}
+            style={{ flex: 1, height: '100%' }}>
             {bar}
           </Pressable>
         );
@@ -499,6 +653,7 @@ export function Chips<T extends string | number>({
           label={format ? format(opt) : String(opt)}
           active={opt === value}
           onPress={() => {
+            if (opt === value) return;
             tap();
             onChange(opt);
           }}
@@ -514,6 +669,8 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
     <PressableScale
       scaleTo={0.93}
       onPress={onPress}
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
       style={{
         paddingVertical: 9,
         paddingHorizontal: spacing.lg,
@@ -566,6 +723,19 @@ export function GradientHeader({
       }}>
       {inner}
     </PressableScale>
+  );
+}
+
+/** Chevron that rotates open/closed with the tab-pill curve. */
+export function DisclosureChevron({ open, color }: { open: boolean; color: string }) {
+  const t = useDerivedValue(() => withTiming(open ? 1 : 0, { duration: 200 }));
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${t.value * 180}deg` }],
+  }));
+  return (
+    <Animated.View style={aStyle}>
+      <Ionicons name="chevron-down" size={18} color={color} />
+    </Animated.View>
   );
 }
 

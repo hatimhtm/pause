@@ -32,6 +32,8 @@ type PauseNativeModule = {
     start: number,
     end: number,
   ): UsageBucket[];
+  getEngineVersion(): string;
+  previewBreathe(): void;
   getEvents(since: number): { packageName: string; timestamp: number; type: string }[];
   pruneEventsBefore(before: number): void;
 };
@@ -69,6 +71,21 @@ export const Native = {
     } catch {
       return [];
     }
+  },
+  /** Engine (APK) version — v1.4+ engines report themselves; older ones return null. */
+  getEngineVersion: (): string | null => {
+    try {
+      return native?.getEngineVersion?.() ?? null;
+    } catch {
+      return null;
+    }
+  },
+  /** True when the installed engine can launch the breathe screen as a harmless preview. */
+  canPreviewBreathe: (): boolean => typeof native?.previewBreathe === 'function',
+  previewBreathe: () => {
+    try {
+      native?.previewBreathe?.();
+    } catch {}
   },
   getEvents: (since: number): LoggedEvent[] =>
     (native?.getEvents(since) ?? []) as LoggedEvent[],

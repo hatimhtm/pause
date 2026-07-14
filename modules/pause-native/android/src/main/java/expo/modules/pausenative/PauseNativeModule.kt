@@ -18,6 +18,33 @@ class PauseNativeModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("PauseNative")
 
+        // The engine's own version — the UI ships OTA and needs to know which APK it's riding on.
+        Function("getEngineVersion") { ENGINE_VERSION }
+
+        // Launch the breathe screen harmlessly: nothing logged, nothing granted, both buttons close.
+        Function("previewBreathe") {
+            val cfg = ConfigStore(context).config()
+            val sample = cfg.apps.values.firstOrNull()
+            val intent = Intent(context, BreatheActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(BreatheActivity.EXTRA_PREVIEW, true)
+                putExtra(BreatheActivity.EXTRA_PACKAGE, sample?.packageName ?: "preview")
+                putExtra(BreatheActivity.EXTRA_LABEL, sample?.label ?: "Instagram")
+                putExtra(BreatheActivity.EXTRA_BREATH_SECONDS, sample?.breathSeconds ?: 15)
+                putExtra(BreatheActivity.EXTRA_REFLECTION, true)
+                putExtra(BreatheActivity.EXTRA_SESSION_MINUTES, cfg.sessionMinutes)
+                putExtra(BreatheActivity.EXTRA_HAPTICS, cfg.haptics)
+                putExtra(BreatheActivity.EXTRA_TITLE, cfg.breath.title)
+                putExtra(BreatheActivity.EXTRA_REFLECTION_TEXT, cfg.breath.reflection)
+                putExtra(BreatheActivity.EXTRA_CONTINUE_LABEL, cfg.breath.continueLabel)
+                putExtra(BreatheActivity.EXTRA_DISMISS_LABEL, cfg.breath.dismissLabel)
+                putExtra(BreatheActivity.EXTRA_COLOR_TOP, cfg.breath.colorTop)
+                putExtra(BreatheActivity.EXTRA_COLOR_BOTTOM, cfg.breath.colorBottom)
+                putExtra(BreatheActivity.EXTRA_COLOR_ACCENT, cfg.breath.colorAccent)
+            }
+            context.startActivity(intent)
+        }
+
         // ---- Permission status ----
         Function("isAccessibilityEnabled") { isAccessibilityEnabled() }
         Function("isServiceRunning") { PauseAccessibilityService.isRunning }
@@ -55,7 +82,7 @@ class PauseNativeModule : Module() {
         }
 
         Function("getEvents") { since: Double ->
-            EventLog(context).since(since.toLong()).map {
+            EventLog.get(context).since(since.toLong()).map {
                 mapOf(
                     "packageName" to it.packageName,
                     "timestamp" to it.timestamp.toDouble(),
@@ -64,7 +91,7 @@ class PauseNativeModule : Module() {
             }
         }
 
-        Function("pruneEventsBefore") { before: Double -> EventLog(context).pruneBefore(before.toLong()) }
+        Function("pruneEventsBefore") { before: Double -> EventLog.get(context).pruneBefore(before.toLong()) }
     }
 
     private fun open(action: String) {
@@ -88,5 +115,10 @@ class PauseNativeModule : Module() {
         val expected = ComponentName(context, PauseNotificationListener::class.java).flattenToString()
         val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: return false
         return flat.split(":").any { it.equals(expected, ignoreCase = true) }
+    }
+
+    companion object {
+        /** Bump alongside every native change — the OTA'd UI reads this to offer the new APK. */
+        private const val ENGINE_VERSION = "1.4.0"
     }
 }

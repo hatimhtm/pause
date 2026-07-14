@@ -23,12 +23,16 @@ class UsageQuery(context: Context) {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /** Foreground time (ms) per package between [start] and [end]. */
+    /**
+     * Foreground time (ms) per package between [start] and [end]. Sessions already running at
+     * [start] (the past-midnight doomscroll) are found by looking back up to 12h and clipping
+     * each session's contribution to the requested range.
+     */
     fun usageBetween(start: Long, end: Long): Map<String, Long> {
         val usm = appContext.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val totals = HashMap<String, Long>()
         val lastForeground = HashMap<String, Long>()
-        val events = usm.queryEvents(start, end)
+        val events = usm.queryEvents(start - TWELVE_HOURS, end)
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
@@ -37,14 +41,14 @@ class UsageQuery(context: Context) {
                 UsageEvents.Event.ACTIVITY_RESUMED -> lastForeground[pkg] = event.timeStamp
                 UsageEvents.Event.ACTIVITY_PAUSED -> {
                     val startedAt = lastForeground.remove(pkg) ?: continue
-                    val delta = event.timeStamp - startedAt
-                    if (delta in 0..TWELVE_HOURS) totals[pkg] = (totals[pkg] ?: 0L) + delta
+                    val overlap = minOf(event.timeStamp, end) - maxOf(startedAt, start)
+                    if (overlap in 1..TWELVE_HOURS) totals[pkg] = (totals[pkg] ?: 0L) + overlap
                 }
             }
         }
         for ((pkg, startedAt) in lastForeground) {
-            val delta = end - startedAt
-            if (delta in 0..TWELVE_HOURS) totals[pkg] = (totals[pkg] ?: 0L) + delta
+            val overlap = end - maxOf(startedAt, start)
+            if (overlap in 1..TWELVE_HOURS) totals[pkg] = (totals[pkg] ?: 0L) + overlap
         }
         return totals
     }

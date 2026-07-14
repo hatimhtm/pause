@@ -6,10 +6,14 @@ import { Native } from './native';
 import type { BreathStyle, MonitoredApp, PauseState, QuietHours, Settings } from './types';
 
 const STORAGE_KEY = 'pause.state.v1';
+// App icons (base64 data URIs, ~KBs each) live under their own key so the hot path —
+// persisting a settings change — never re-serializes them.
+const ICONS_KEY = 'pause.icons.v1';
 
 /** Anything shorter is easy to sit through on autopilot — the pause has to cost something. */
 export const MIN_BREATH_SECONDS = 15;
 const EVENT_RETENTION_DAYS = 30;
+const PERSIST_DEBOUNCE_MS = 350;
 
 const defaultBreath: BreathStyle = {
   title: 'Take a breath',
@@ -37,6 +41,10 @@ const initialState: PauseState = {
 
 let state: PauseState = initialState;
 let hydrated = false;
+// When the stored state could not be read, never write: a persist would replace the user's
+// real config (and native's copy) with defaults. Native keeps its own last-good config, so
+// interventions keep working through a bad launch.
+let storeCompromised = false;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -56,6 +64,7 @@ function toNativeConfig(s: PauseState): string {
   }
   return JSON.stringify({
     sessionMinutes: s.settings.sessionMinutes,
+    haptics: s.settings.haptics,
     breath: s.breath,
     apps,
     quietHours: s.quiet.map((q) => ({
@@ -67,17 +76,43 @@ function toNativeConfig(s: PauseState): string {
   });
 }
 
-async function persist() {
+function stripIcons(s: PauseState): PauseState {
+  const apps: PauseState['apps'] = {};
+  for (const [pkg, app] of Object.entries(s.apps)) apps[pkg] = { ...app, icon: null };
+  return { ...s, apps };
+}
+
+async function persistNow() {
+  if (storeCompromised) return;
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(stripIcons(state)));
   } catch {}
   Native.setConfig(toNativeConfig(state));
+}
+
+async function persistIcons() {
+  if (storeCompromised) return;
+  try {
+    const icons: Record<string, string> = {};
+    for (const app of Object.values(state.apps)) if (app.icon) icons[app.packageName] = app.icon;
+    await AsyncStorage.setItem(ICONS_KEY, JSON.stringify(icons));
+  } catch {}
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePersist() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    void persistNow();
+  }, PERSIST_DEBOUNCE_MS);
 }
 
 function set(next: PauseState) {
   state = next;
   emit();
-  void persist();
+  schedulePersist();
 }
 
 /** Raise any pause length saved before the 15-second floor existed. */
@@ -96,26 +131,50 @@ function clampBreathSeconds(s: PauseState): PauseState {
   };
 }
 
+async function readState(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY); // throws -> caller marks compromised
+  if (raw) {
+    const parsed = JSON.parse(raw) as Partial<PauseState>;
+    let icons: Record<string, string> = {};
+    try {
+      icons = JSON.parse((await AsyncStorage.getItem(ICONS_KEY)) ?? '{}');
+    } catch {}
+    const apps: PauseState['apps'] = {};
+    for (const [pkg, app] of Object.entries(parsed.apps ?? {})) {
+      apps[pkg] = { ...app, icon: app.icon ?? icons[pkg] ?? null };
+    }
+    state = clampBreathSeconds({
+      apps,
+      quiet: parsed.quiet ?? [],
+      settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
+      breath: { ...defaultBreath, ...(parsed.breath ?? {}) },
+    });
+  }
+  return true; // raw === null is a genuine fresh install — safe to persist defaults
+}
+
 export async function hydrate() {
   if (hydrated) return;
+  let readOk = false;
   try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PauseState>;
-      state = clampBreathSeconds({
-        apps: parsed.apps ?? {},
-        quiet: parsed.quiet ?? [],
-        settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
-        breath: { ...defaultBreath, ...(parsed.breath ?? {}) },
-      });
-    }
-  } catch {}
+    readOk = await readState();
+  } catch {
+    // One retry — cold-start storage hiccups are usually transient.
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      readOk = await readState();
+    } catch {}
+  }
+  storeCompromised = !readOk;
   hydrated = true;
   emit();
-  // Persist any clamping and make sure native has the latest config even on a cold start.
-  void persist();
-  // The event log has no other janitor — trim it on every cold start.
-  Native.pruneEventsBefore(Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  if (readOk) {
+    // Persist any clamping and make sure native has the latest config even on a cold start.
+    void persistNow();
+    void persistIcons();
+    // The event log has no other janitor — trim it on every cold start.
+    Native.pruneEventsBefore(Date.now() - EVENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  }
 }
 
 // ---- mutations ----
@@ -134,11 +193,13 @@ export const actions = {
       addedAt: Date.now(),
     };
     set({ ...state, apps: { ...state.apps, [packageName]: app } });
+    void persistIcons();
   },
   removeApp(packageName: string) {
     const apps = { ...state.apps };
     delete apps[packageName];
     set({ ...state, apps });
+    void persistIcons();
   },
   updateApp(packageName: string, patch: Partial<MonitoredApp>) {
     const current = state.apps[packageName];
@@ -187,11 +248,20 @@ export function useStore(): PauseState {
   return useSyncExternalStore(subscribe, () => state);
 }
 
-/** Non-reactive snapshot for imperative code (haptics, logging). */
-export function currentState(): PauseState {
-  return state;
+/**
+ * Subscribe to a slice. useSyncExternalStore bails out when the selected snapshot is
+ * Object.is-equal, so screens stop re-rendering on unrelated mutations. The selector must
+ * return something referentially stable (a state slice), not a fresh object.
+ */
+export function useStoreSelector<T>(selector: (s: PauseState) => T): T {
+  return useSyncExternalStore(subscribe, () => selector(state));
 }
 
 export function useHydrated(): boolean {
   return useSyncExternalStore(subscribe, () => hydrated);
+}
+
+/** Non-reactive snapshot for imperative code (haptics, logging). */
+export function currentState(): PauseState {
+  return state;
 }

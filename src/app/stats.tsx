@@ -1,15 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { DAY_NAMES, formatMinutes, startOfDayNDaysAgo } from '@/lib/format';
 import { Native } from '@/lib/native';
-import { computeBuckets, type UsageBucketStat } from '@/lib/stats';
-import { useStore } from '@/lib/store';
+import { computeBuckets, usageForDay, type UsageBucketStat } from '@/lib/stats';
+import { useStoreSelector } from '@/lib/store';
 import type { MonitoredApp } from '@/lib/types';
-import { spacing, useAppTheme } from '@/theme';
-import { Appear, AppAvatar, BarChart, Body, Card, Chips, Heading, Label, Screen, Spinner, StatTile } from '@/ui/kit';
+import { spacing } from '@/theme';
+import { Appear, AppAvatar, BarChart, Body, Card, Chips, Heading, Label, PageHeader, Screen, Spinner, StatTile } from '@/ui/kit';
 
 type Range = 'week' | 'month' | 'year';
 
@@ -32,16 +31,19 @@ function computeDays(apps: Record<string, MonitoredApp>, usageAccess: boolean): 
   for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
     const start = startOfDayNDaysAgo(daysAgo);
     const end = daysAgo === 0 ? now : startOfDayNDaysAgo(daysAgo - 1);
-    const usage = usageAccess ? Native.getUsage(start, end) : {};
+    const usage = usageAccess ? usageForDay(daysAgo) : {};
     const opens = usageAccess ? Native.getOpens(start, end) : {};
     const attempts: Record<string, number> = {};
     const backedOut: Record<string, number> = {};
     for (const e of events) {
       if (e.timestamp < start || e.timestamp >= end) continue;
+      if (!apps[e.packageName]) continue;
       if (e.type === 'shown') attempts[e.packageName] = (attempts[e.packageName] ?? 0) + 1;
       else if (e.type === 'dismissed') backedOut[e.packageName] = (backedOut[e.packageName] ?? 0) + 1;
     }
     const d = new Date(start);
+    let ms = 0;
+    for (const pkg of pkgs) ms += usage[pkg] ?? 0;
     out.push({
       start,
       end,
@@ -50,33 +52,36 @@ function computeDays(apps: Record<string, MonitoredApp>, usageAccess: boolean): 
       opens,
       attempts,
       backedOut,
-      minutes: Math.round(pkgs.reduce((s, p) => s + (usage[p] ?? 0), 0) / 60000),
+      minutes: Math.round(ms / 60000),
     });
   }
   return out;
 }
 
 // Session cache: reopening the screen paints instantly, fresh numbers replace it right after.
-let daysCache: DayData[] | null = null;
+let daysCache: { key: string; days: DayData[] } | null = null;
 
 export default function StatsScreen() {
-  const c = useAppTheme();
   const router = useRouter();
-  const { apps } = useStore();
+  const apps = useStoreSelector((s) => s.apps);
+  const key = Object.keys(apps).sort().join(',');
   const [range, setRange] = useState<Range>('week');
   const [selected, setSelected] = useState(6); // today
-  const [days, setDays] = useState<DayData[] | null>(daysCache);
+  const [days, setDays] = useState<DayData[] | null>(
+    daysCache && daysCache.key === key ? daysCache.days : null,
+  );
   const [buckets, setBuckets] = useState<Partial<Record<'month' | 'year', UsageBucketStat[]>>>({});
   const [selectedBucket, setSelectedBucket] = useState<number | null>(null);
+  const [usageAccess, setUsageAccess] = useState(() => Native.hasUsageAccess());
   const [refreshing, setRefreshing] = useState(false);
 
-  const usageAccess = Native.hasUsageAccess();
-
   const compute = useCallback(() => {
-    const d = computeDays(apps, usageAccess);
-    daysCache = d;
+    const access = Native.hasUsageAccess(); // re-read: it may have been granted since mount
+    setUsageAccess(access);
+    const d = computeDays(apps, access);
+    daysCache = { key, days: d };
     setDays(d);
-  }, [apps, usageAccess]);
+  }, [apps, key]);
 
   // The 7-day sweep is the expensive query — keep it off the first paint.
   useEffect(() => {
@@ -84,9 +89,15 @@ export default function StatsScreen() {
     return () => clearTimeout(t);
   }, [compute]);
 
-  // Month/year buckets load lazily the first time their tab is opened.
+  // Month/year buckets load lazily the first time their tab is opened; the selection always
+  // re-anchors to the newest bucket of THAT range (indices don't carry across ranges).
   useEffect(() => {
-    if (range === 'week' || buckets[range]) return;
+    if (range === 'week') return;
+    const existing = buckets[range];
+    if (existing) {
+      setSelectedBucket(existing.length > 0 ? existing.length - 1 : null);
+      return;
+    }
     const t = setTimeout(() => {
       const b = computeBuckets(apps, range === 'month' ? 'weekly' : 'monthly');
       setBuckets((prev) => ({ ...prev, [range]: b }));
@@ -94,6 +105,11 @@ export default function StatsScreen() {
     }, 40);
     return () => clearTimeout(t);
   }, [range, apps, buckets]);
+
+  // A changed watch list invalidates the long-range cache.
+  useEffect(() => {
+    setBuckets({});
+  }, [key]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -145,12 +161,7 @@ export default function StatsScreen() {
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Appear index={0}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.lg }}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={{ marginRight: spacing.md }}>
-            <Ionicons name="chevron-back" size={26} color={c.text} />
-          </Pressable>
-          <Heading style={{ fontSize: 22, flex: 1 }}>Your time</Heading>
-        </View>
+        <PageHeader title="Your time" onBack={() => router.back()} />
         <View style={{ marginBottom: spacing.lg }}>
           <Chips
             options={['week', 'month', 'year'] as Range[]}
@@ -226,7 +237,9 @@ export default function StatsScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <AppAvatar icon={a.icon} />
                       <View style={{ flex: 1, marginLeft: spacing.md }}>
-                        <Heading style={{ fontSize: 16 }}>{a.label}</Heading>
+                        <Heading style={{ fontSize: 16 }} numberOfLines={1}>
+                          {a.label}
+                        </Heading>
                         <Body faint style={{ fontSize: 12.5 }}>
                           {a.opens} opens · {a.attempts} paused · {a.backedOut} backed out
                         </Body>
@@ -246,9 +259,8 @@ export default function StatsScreen() {
           <Card>
             <Heading style={{ fontSize: 16, marginBottom: spacing.xs }}>No long-range data yet</Heading>
             <Body dim style={{ fontSize: 13.5 }}>
-              Longer history needs the latest Pause version (v1.2+) and builds up as Android
-              collects it — weeks appear after a few weeks, months after a few months. Check back
-              soon.
+              Longer history builds up as Android collects it — weeks appear after a few weeks,
+              months after a few months.
             </Body>
           </Card>
         </Appear>
@@ -311,7 +323,9 @@ export default function StatsScreen() {
                       style={{ marginBottom: spacing.sm }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <AppAvatar icon={a.icon} />
-                        <Heading style={{ fontSize: 16, flex: 1, marginLeft: spacing.md }}>{a.label}</Heading>
+                        <Heading style={{ fontSize: 16, flex: 1, marginLeft: spacing.md }} numberOfLines={1}>
+                          {a.label}
+                        </Heading>
                         <Heading style={{ fontSize: 16 }}>{formatMinutes(a.minutes)}</Heading>
                       </View>
                     </Card>

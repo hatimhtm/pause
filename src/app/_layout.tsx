@@ -10,6 +10,11 @@ import { hydrate, useHydrated, useStore } from '@/lib/store';
 
 SplashScreen.preventAutoHideAsync();
 
+// The foreground listener would otherwise hit the update server dozens of times a day —
+// on the one phone this app exists to protect. Pull-to-refresh stays the "check now" path.
+let lastOtaCheck = 0;
+const OTA_CHECK_INTERVAL_MS = 6 * 3600_000;
+
 export default function RootLayout() {
   const router = useRouter();
   const scheme = useColorScheme();
@@ -29,6 +34,8 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (s) => {
       if (s !== 'active' || !Updates.isEnabled) return;
+      if (Date.now() - lastOtaCheck < OTA_CHECK_INTERVAL_MS) return;
+      lastOtaCheck = Date.now();
       try {
         const res = await Updates.checkForUpdateAsync();
         if (res.isAvailable) await Updates.fetchUpdateAsync();

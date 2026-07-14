@@ -1,15 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
-import { useCallback, useEffect, useState } from 'react';
-import { Modal, Text, ToastAndroid, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal, Text, TextInput, ToastAndroid, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedProps,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { CHANGELOG, CURRENT_CHANGELOG_ID } from '@/lib/changelog';
 import { formatMinutes } from '@/lib/format';
 import { usePermissions } from '@/lib/permissions';
 import { useDashboard } from '@/lib/stats';
-import { actions, useHydrated, useStore } from '@/lib/store';
-import { spacing, useAppTheme } from '@/theme';
+import { actions, useHydrated, useStoreSelector } from '@/lib/store';
+import { radius, spacing, useAppTheme } from '@/theme';
 import {
   Appear,
   AppAvatar,
@@ -25,25 +31,84 @@ import {
   Title,
 } from '@/ui/kit';
 
-function headline(totalMinutes: number, backedOut: number, appCount: number, usageAccess: boolean): string {
+function headline(
+  totalMinutes: number,
+  backedOut: number,
+  appCount: number,
+  usageAccess: boolean,
+  weekly: { minutes: number }[],
+): string {
   if (appCount === 0) return 'Add a few apps to start seeing your day here.';
   if (!usageAccess) return 'Turn on Usage Access to see the real numbers.';
+  // Her own week is the honest yardstick — fixed thresholds turn preachy over time.
+  const prior = weekly.slice(0, 6);
+  const avg = prior.length > 0 ? prior.reduce((s, d) => s + d.minutes, 0) / prior.length : 0;
+  if (avg > 0 && totalMinutes >= 60 && totalMinutes < 0.75 * avg)
+    return `${formatMinutes(totalMinutes)} so far — under your usual pace.`;
+  if (avg > 0 && totalMinutes >= 60 && totalMinutes > 1.25 * avg)
+    return `${formatMinutes(totalMinutes)} — already past a normal day, and it isn't over.`;
   if (totalMinutes >= 180)
     return `That's ${formatMinutes(totalMinutes)} of your day gone to these apps. Was it worth it?`;
   if (totalMinutes >= 60) return `${formatMinutes(totalMinutes)} you're not getting back. It adds up fast.`;
   if (backedOut > 0)
     return `You walked away ${backedOut} ${backedOut === 1 ? 'time' : 'times'} today. That's the habit breaking.`;
   if (totalMinutes > 0) return 'A light day so far. Keep it that way.';
-  return 'Nothing yet today. Keep it that way.';
+  return "Nothing yet today. That's how a good day starts.";
+}
+
+// Cast: reanimated drives the native `text` prop directly (the standard ReText trick),
+// which TextInputProps doesn't know about.
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput) as unknown as React.ComponentType<
+  React.ComponentProps<typeof TextInput> & { animatedProps?: unknown }
+>;
+
+/** The 44pt hero total counts up so the day's cost registers as an amount, not a label. */
+function HeroMinutes({ minutes }: { minutes: number }) {
+  const v = useSharedValue(minutes);
+  const last = useRef<number | null>(null);
+  useEffect(() => {
+    if (last.current === minutes) return; // focus refreshes with the same value must not replay
+    const first = last.current === null;
+    last.current = minutes;
+    if (minutes === 0) {
+      v.value = 0; // snap — animating to nothing celebrates nothing
+      return;
+    }
+    if (first) v.value = 0;
+    v.value = withTiming(minutes, { duration: 700, easing: Easing.out(Easing.cubic) });
+  }, [minutes, v]);
+  const animatedProps = useAnimatedProps(() => {
+    'worklet';
+    const m = Math.max(0, Math.round(v.value));
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    const text = m < 60 ? `${m}m` : rem === 0 ? `${h}h` : `${h}h ${rem}m`;
+    return { text } as { text: string };
+  });
+  return (
+    <AnimatedTextInput
+      editable={false}
+      defaultValue={formatMinutes(minutes)}
+      animatedProps={animatedProps}
+      style={{
+        color: '#FFFFFF',
+        fontSize: 44,
+        fontWeight: '800',
+        letterSpacing: -1,
+        marginTop: 6,
+        padding: 0,
+      }}
+    />
+  );
 }
 
 function WhatsNewCard({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const c = useAppTheme();
   const entry = CHANGELOG[0];
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#0009', justifyContent: 'center', padding: spacing.xl }}>
-        <View style={{ backgroundColor: c.bgElevated, borderRadius: 24, padding: spacing.xl }}>
+    <Modal visible={visible} transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: c.scrim, justifyContent: 'center', padding: spacing.xl }}>
+        <View style={{ backgroundColor: c.bgElevated, borderRadius: radius.lg, padding: spacing.xl }}>
           <Label style={{ color: c.primary }}>What’s new · v{entry.version}</Label>
           <Heading style={{ fontSize: 22, marginTop: 4, marginBottom: spacing.md }}>{entry.title}</Heading>
           {entry.highlights.map((h, i) => (
@@ -63,7 +128,8 @@ export default function TodayScreen() {
   const c = useAppTheme();
   const router = useRouter();
   const hydrated = useHydrated();
-  const { apps, settings } = useStore();
+  const apps = useStoreSelector((s) => s.apps);
+  const settings = useStoreSelector((s) => s.settings);
   const { data, refresh } = useDashboard(apps);
   const { perm, refresh: refreshPerm } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
@@ -143,17 +209,23 @@ export default function TodayScreen() {
       {data ? (
         <>
           <Appear index={1}>
-            <GradientHeader onPress={() => router.push('/stats')}>
-              <Label style={{ color: '#BFE3E2' }}>Time on watched apps</Label>
-              <Text style={{ color: '#FFFFFF', fontSize: 44, fontWeight: '800', marginTop: 6, letterSpacing: -1 }}>
-                {data.usageAccess ? formatMinutes(data.totalMinutes) : '—'}
-              </Text>
-              <Body style={{ color: '#DDF1F0', marginTop: 4 }}>
-                {headline(data.totalMinutes, data.totalBackedOut, appCount, data.usageAccess)}
+            <GradientHeader onPress={() => router.push(data.usageAccess ? '/stats' : '/onboarding')}>
+              <Label style={{ color: c.onOverlayFaint }}>Time on watched apps</Label>
+              {data.usageAccess ? (
+                <HeroMinutes minutes={data.totalMinutes} />
+              ) : (
+                <Text style={{ color: c.onOverlay, fontSize: 44, fontWeight: '800', marginTop: 6, letterSpacing: -1 }}>
+                  —
+                </Text>
+              )}
+              <Body style={{ color: c.onOverlayDim, marginTop: 4 }}>
+                {headline(data.totalMinutes, data.totalBackedOut, appCount, data.usageAccess, data.weekly)}
               </Body>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md }}>
-                <Body style={{ color: '#BFE3E2', fontSize: 13, fontWeight: '700' }}>See your week</Body>
-                <Ionicons name="arrow-forward" size={14} color="#BFE3E2" style={{ marginLeft: 4 }} />
+                <Body style={{ color: c.onOverlayFaint, fontSize: 13, fontWeight: '700' }}>
+                  {data.usageAccess ? 'See your week' : 'Turn it on'}
+                </Body>
+                <Ionicons name="arrow-forward" size={14} color={c.onOverlayFaint} style={{ marginLeft: 4 }} />
               </View>
             </GradientHeader>
           </Appear>
@@ -175,14 +247,6 @@ export default function TodayScreen() {
               />
             </View>
           </Appear>
-
-          {!data.usageAccess ? (
-            <Appear index={3}>
-              <Card onPress={() => router.push('/onboarding')} style={{ marginTop: spacing.md }}>
-                <Body dim>Turn on Usage Access to see time spent per app.</Body>
-              </Card>
-            </Appear>
-          ) : null}
 
           {data.weekly.length > 0 ? (
             <Appear index={3}>
@@ -215,7 +279,9 @@ export default function TodayScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <AppAvatar icon={apps[s.packageName]?.icon ?? null} />
                       <View style={{ flex: 1, marginLeft: spacing.md }}>
-                        <Heading style={{ fontSize: 16 }}>{s.label}</Heading>
+                        <Heading style={{ fontSize: 16 }} numberOfLines={1}>
+                          {s.label}
+                        </Heading>
                         <Body faint style={{ fontSize: 12.5 }}>
                           {s.opens} opens · {s.attempts} paused · {s.backedOut} backed out
                         </Body>

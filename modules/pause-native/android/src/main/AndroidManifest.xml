@@ -7,12 +7,15 @@
         tools:ignore="QueryAllPackagesPermission" />
 
     <application>
+        <!-- configChanges: a rotation must not recreate the activity — that would restart the
+             randomized wait from zero. The layout is orientation-agnostic anyway. -->
         <activity
             android:name=".BreatheActivity"
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
             android:taskAffinity="expo.modules.pausenative.breathe"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <service

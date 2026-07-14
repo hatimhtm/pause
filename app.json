@@ -3,7 +3,7 @@
     "name": "Pause",
     "slug": "pause",
     "owner": "hatimelhassak",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "pause",
@@ -36,9 +36,7 @@
         }
       ]
     ],
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "pause-1",
     "experiments": {
       "typedRoutes": false,
       "reactCompiler": true

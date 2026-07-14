@@ -35,6 +35,14 @@ export type AppColors = {
   success: string;
   overlayTop: string;
   overlayBottom: string;
+  /** Foreground on the teal gradient overlays — same in both themes. */
+  onOverlay: string;
+  onOverlayDim: string;
+  onOverlayFaint: string;
+  /** Modal backdrop. */
+  scrim: string;
+  /** Switch "on" track — dark mode needs a saturated teal, mist swallows the white thumb. */
+  switchOn: string;
 };
 
 const light: AppColors = {
@@ -46,7 +54,7 @@ const light: AppColors = {
   border: '#E4E0D6',
   text: '#14201F',
   textDim: '#566462',
-  textFaint: '#8A9694',
+  textFaint: '#6C7977', // ≥4.5:1 on card white — it carries real information at 12px
   primary: palette.teal,
   onPrimary: '#FFFFFF',
   primarySoft: '#D7EEED',
@@ -56,6 +64,11 @@ const light: AppColors = {
   success: palette.teal,
   overlayTop: palette.tealDeep,
   overlayBottom: palette.teal,
+  onOverlay: '#FFFFFF',
+  onOverlayDim: '#DDF1F0',
+  onOverlayFaint: palette.mist,
+  scrim: '#00000099',
+  switchOn: palette.teal,
 };
 
 const dark: AppColors = {
@@ -67,7 +80,7 @@ const dark: AppColors = {
   border: '#26302E',
   text: '#EAF2F1',
   textDim: '#9DACAA',
-  textFaint: '#6A7876',
+  textFaint: '#8A9895', // ≥4.5:1 on the dark card
   primary: palette.mist,
   onPrimary: palette.tealDeep,
   primarySoft: '#14322F',
@@ -77,6 +90,11 @@ const dark: AppColors = {
   success: palette.mist,
   overlayTop: '#04302F',
   overlayBottom: palette.teal,
+  onOverlay: '#FFFFFF',
+  onOverlayDim: '#DDF1F0',
+  onOverlayFaint: palette.mist,
+  scrim: '#00000099',
+  switchOn: palette.tealBright,
 };
 
 export function useAppTheme(): AppColors {

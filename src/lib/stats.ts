@@ -26,6 +26,30 @@ export type Dashboard = {
   weekly: DayStat[];
 };
 
+function appsKey(apps: Record<string, MonitoredApp>): string {
+  return Object.keys(apps).sort().join(',');
+}
+
+// ---- shared per-day usage cache ----
+// Past days are immutable — cache them so the Today chart, the stats screen, and the per-app
+// config chart don't repeat identical full-day native scans. Today is always read fresh.
+const dayUsageCache = new Map<number, Record<string, number>>();
+
+export function usageForDay(daysAgo: number): Record<string, number> {
+  const start = startOfDayNDaysAgo(daysAgo);
+  if (daysAgo === 0) return Native.getUsage(start, Date.now());
+  const cached = dayUsageCache.get(start);
+  if (cached) return cached;
+  const usage = Native.getUsage(start, startOfDayNDaysAgo(daysAgo - 1));
+  dayUsageCache.set(start, usage);
+  // Keep the cache from growing without bound across many midnights.
+  if (dayUsageCache.size > 40) {
+    const oldest = Math.min(...dayUsageCache.keys());
+    dayUsageCache.delete(oldest);
+  }
+  return usage;
+}
+
 /** Today-only numbers — three native reads, cheap enough to run on the JS thread at paint time. */
 function computeToday(apps: Record<string, MonitoredApp>): Omit<Dashboard, 'weekly'> {
   const usageAccess = Native.hasUsageAccess();
@@ -41,48 +65,90 @@ function computeToday(apps: Record<string, MonitoredApp>): Omit<Dashboard, 'week
   const continued: Record<string, number> = {};
   const backedOut: Record<string, number> = {};
   for (const e of events) {
+    if (!apps[e.packageName]) continue;
     if (e.type === 'shown') attempts[e.packageName] = (attempts[e.packageName] ?? 0) + 1;
     else if (e.type === 'continued') continued[e.packageName] = (continued[e.packageName] ?? 0) + 1;
     else if (e.type === 'dismissed') backedOut[e.packageName] = (backedOut[e.packageName] ?? 0) + 1;
   }
 
+  // Keep raw ms until the end so the total equals the sum users can check by hand.
+  let totalMs = 0;
   const perApp: AppStat[] = monitored
-    .map((a) => ({
-      packageName: a.packageName,
-      label: a.label,
-      minutes: Math.round((usage[a.packageName] ?? 0) / 60000),
-      opens: opens[a.packageName] ?? 0,
-      attempts: attempts[a.packageName] ?? 0,
-      continued: continued[a.packageName] ?? 0,
-      backedOut: backedOut[a.packageName] ?? 0,
-    }))
+    .map((a) => {
+      const ms = usage[a.packageName] ?? 0;
+      totalMs += ms;
+      return {
+        packageName: a.packageName,
+        label: a.label,
+        minutes: Math.round(ms / 60000),
+        opens: opens[a.packageName] ?? 0,
+        attempts: attempts[a.packageName] ?? 0,
+        continued: continued[a.packageName] ?? 0,
+        backedOut: backedOut[a.packageName] ?? 0,
+      };
+    })
     .sort((x, y) => y.minutes - x.minutes || y.attempts - x.attempts);
 
   return {
     usageAccess,
     perApp,
-    totalMinutes: perApp.reduce((s, a) => s + a.minutes, 0),
+    totalMinutes: Math.round(totalMs / 60000),
     totalAttempts: perApp.reduce((s, a) => s + a.attempts, 0),
     totalBackedOut: perApp.reduce((s, a) => s + a.backedOut, 0),
     totalContinued: perApp.reduce((s, a) => s + a.continued, 0),
   };
 }
 
-/** Seven full-day usage scans — the expensive part; keep it off the first paint. */
-function computeWeekly(apps: Record<string, MonitoredApp>): DayStat[] {
-  if (!Native.hasUsageAccess()) return [];
-  const pkgs = Object.keys(apps);
-  const now = Date.now();
-  const weekly: DayStat[] = [];
-  for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
-    const start = startOfDayNDaysAgo(daysAgo);
-    const end = daysAgo === 0 ? now : startOfDayNDaysAgo(daysAgo - 1);
-    const dayUsage = Native.getUsage(start, end);
-    let minutes = 0;
-    for (const pkg of pkgs) minutes += (dayUsage[pkg] ?? 0) / 60000;
-    weekly.push({ label: DAY_LETTERS[new Date(start).getDay()], minutes: Math.round(minutes) });
-  }
-  return weekly;
+// Last computed dashboard, kept per app-set so returning to the tab paints instantly.
+let cached: { key: string; data: Dashboard } | null = null;
+
+/**
+ * Recompute on demand (call refresh() on screen focus). Paints cheap today-data immediately;
+ * the weekly sweep runs one day per macrotask so it never blocks a frame for long.
+ */
+export function useDashboard(apps: Record<string, MonitoredApp>) {
+  const key = appsKey(apps);
+  const [data, setData] = useState<Dashboard | null>(cached && cached.key === key ? cached.data : null);
+  const gen = useRef(0);
+
+  const refresh = useCallback(() => {
+    const today = computeToday(apps);
+    const prior = cached && cached.key === key ? cached.data.weekly : [];
+    const snapshot: Dashboard = { ...today, weekly: prior };
+    cached = { key, data: snapshot };
+    setData(snapshot);
+
+    if (!today.usageAccess) return;
+    const token = ++gen.current;
+    const pkgs = Object.keys(apps);
+    const weekly: DayStat[] = [];
+    // One day per macrotask: past days usually hit the cache and cost ~nothing.
+    const step = (daysAgo: number) => {
+      if (token !== gen.current) return; // superseded or unmounted
+      const start = startOfDayNDaysAgo(daysAgo);
+      const usage = usageForDay(daysAgo);
+      let ms = 0;
+      for (const pkg of pkgs) ms += usage[pkg] ?? 0;
+      weekly.push({ label: DAY_LETTERS[new Date(start).getDay()], minutes: Math.round(ms / 60000) });
+      if (daysAgo === 0) {
+        const full: Dashboard = { ...today, weekly };
+        cached = { key, data: full };
+        setData(full);
+      } else {
+        setTimeout(() => step(daysAgo - 1), 0);
+      }
+    };
+    setTimeout(() => step(6), 50);
+  }, [apps, key]);
+
+  useEffect(
+    () => () => {
+      gen.current++;
+    },
+    [],
+  );
+
+  return { data, refresh };
 }
 
 // ---- Pause-event history (from the on-device event log, 30-day retention) ----
@@ -90,6 +156,7 @@ function computeWeekly(apps: Record<string, MonitoredApp>): DayStat[] {
 export type EventDay = {
   start: number;
   label: string; // "Jul 3"
+  dayOfMonth: number;
   shown: number;
   backedOut: number;
   continued: number;
@@ -108,6 +175,8 @@ export type EventHistory = {
   totals: { shown: number; backedOut: number; continued: number };
   /** Consecutive days ending now with at least one walk-away (today may still be 0). */
   streak: number;
+  /** True when the streak filled the whole window — the real streak may be longer. */
+  streakCapped: boolean;
 };
 
 export function computeEventHistory(apps: Record<string, MonitoredApp>, numDays = 30): EventHistory {
@@ -120,6 +189,7 @@ export function computeEventHistory(apps: Record<string, MonitoredApp>, numDays 
     const day: EventDay = {
       start,
       label: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      dayOfMonth: date.getDate(),
       shown: 0,
       backedOut: 0,
       continued: 0,
@@ -130,6 +200,8 @@ export function computeEventHistory(apps: Record<string, MonitoredApp>, numDays 
 
   const perAppMap = new Map<string, { shown: number; backedOut: number; continued: number }>();
   for (const e of events) {
+    // History matches the visible per-app rows: watched apps only, so totals always balance.
+    if (!apps[e.packageName]) continue;
     const dayStart = new Date(e.timestamp).setHours(0, 0, 0, 0);
     const day = dayIndex.get(dayStart);
     const app = (perAppMap.get(e.packageName) ??
@@ -171,7 +243,22 @@ export function computeEventHistory(apps: Record<string, MonitoredApp>, numDays 
       continued: days.reduce((s, d) => s + d.continued, 0),
     },
     streak,
+    streakCapped: streak >= numDays,
   };
+}
+
+// Session cache shared by the Wins and Attempts screens — same query, no spinner blink.
+let historyCache: { key: string; data: EventHistory } | null = null;
+
+export function getCachedHistory(apps: Record<string, MonitoredApp>): EventHistory | null {
+  const key = appsKey(apps);
+  return historyCache && historyCache.key === key ? historyCache.data : null;
+}
+
+export function computeAndCacheHistory(apps: Record<string, MonitoredApp>): EventHistory {
+  const data = computeEventHistory(apps);
+  historyCache = { key: appsKey(apps), data };
+  return data;
 }
 
 // ---- Long-range usage buckets (Android's pre-aggregated tiers; needs the v1.2+ engine) ----
@@ -193,60 +280,33 @@ export function computeBuckets(
   const now = Date.now();
   const span = interval === 'weekly' ? 60 : 400; // days back; the OS returns what it kept
   const rows = Native.getUsageHistory(interval, now - span * 24 * 60 * 60 * 1000, now);
-  const map = new Map<number, UsageBucketStat>();
+  const map = new Map<number, { start: number; ms: number; perAppMs: Record<string, number> }>();
   for (const r of rows) {
     if (!pkgs.has(r.packageName)) continue;
     const key = new Date(r.start).setHours(0, 0, 0, 0);
     let b = map.get(key);
     if (!b) {
-      b = { start: key, label: '', minutes: 0, perApp: {} };
+      b = { start: key, ms: 0, perAppMs: {} };
       map.set(key, b);
     }
-    b.minutes += r.totalMs / 60000;
-    b.perApp[r.packageName] = (b.perApp[r.packageName] ?? 0) + r.totalMs / 60000;
+    b.ms += r.totalMs;
+    b.perAppMs[r.packageName] = (b.perAppMs[r.packageName] ?? 0) + r.totalMs;
   }
-  const out = [...map.values()].sort((a, b) => a.start - b.start);
-  for (const b of out) {
+  const raw = [...map.values()].sort((a, b) => a.start - b.start);
+  const spansYears =
+    raw.length > 1 && new Date(raw[0].start).getFullYear() !== new Date(raw[raw.length - 1].start).getFullYear();
+  return raw.map((b, i) => {
     const d = new Date(b.start);
-    b.label =
-      interval === 'weekly'
-        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        : MONTH_NAMES[d.getMonth()];
-    b.minutes = Math.round(b.minutes);
-    for (const k of Object.keys(b.perApp)) b.perApp[k] = Math.round(b.perApp[k]);
-  }
-  return out;
-}
-
-// Last computed dashboard, kept for the session so returning to the tab paints instantly
-// with yesterday's-second data while fresh numbers are computed.
-let cached: Dashboard | null = null;
-
-/** Recompute on demand (call refresh() on screen focus). Paints cheap data now, weekly async. */
-export function useDashboard(apps: Record<string, MonitoredApp>) {
-  const [data, setData] = useState<Dashboard | null>(cached);
-  const gen = useRef(0);
-
-  const refresh = useCallback(() => {
-    const today = computeToday(apps);
-    const snapshot: Dashboard = { ...today, weekly: cached?.weekly ?? [] };
-    cached = snapshot;
-    setData(snapshot);
-    const token = ++gen.current;
-    setTimeout(() => {
-      if (token !== gen.current) return; // superseded or unmounted
-      const full: Dashboard = { ...today, weekly: computeWeekly(apps) };
-      cached = full;
-      setData(full);
-    }, 60);
-  }, [apps]);
-
-  useEffect(
-    () => () => {
-      gen.current++;
-    },
-    [],
-  );
-
-  return { data, refresh };
+    let label: string;
+    if (interval === 'weekly') {
+      label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } else {
+      label = MONTH_NAMES[d.getMonth()];
+      // Two "Jul" bars a year apart would be a lie of omission.
+      if (spansYears && (i === 0 || d.getMonth() === 0)) label += ` ’${String(d.getFullYear()).slice(2)}`;
+    }
+    const perApp: Record<string, number> = {};
+    for (const [pkg, ms] of Object.entries(b.perAppMs)) perApp[pkg] = Math.round(ms / 60000);
+    return { start: b.start, label, minutes: Math.round(b.ms / 60000), perApp };
+  });
 }

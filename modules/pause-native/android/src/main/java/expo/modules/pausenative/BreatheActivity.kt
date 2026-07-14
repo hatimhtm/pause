@@ -6,10 +6,12 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -31,8 +33,9 @@ import kotlin.random.Random
  * Deliberately shows NO countdown or progress: visible timers make waits feel ~30% shorter and
  * give a sense of control (pedestrian countdown studies), and a learnable fixed length invites
  * counting along on autopilot (the documented one-sec habituation failure). So the wait length is
- * randomized per open (+0–40%), the only exit shown during the wait is "close", and "open anyway"
- * appears late, small and unceremoniously — no checkmark, no reward for waiting it out.
+ * randomized per open (+0–40%), grows with repeat opens (+3s per open beyond the second, capped),
+ * the only exit shown during the wait is "close", and "open anyway" appears late, small and
+ * unceremoniously — no checkmark, no reward for waiting it out.
  */
 class BreatheActivity : Activity() {
 
@@ -41,6 +44,9 @@ class BreatheActivity : Activity() {
     private lateinit var pkg: String
     private var sessionMinutes = 5
     private var accent = Color.parseColor("#BFE3E2")
+    private var hapticsEnabled = true
+    private var preview = false
+    private var resolved = false // a button decided the outcome; onStop shouldn't double-handle
 
     private lateinit var phaseText: TextView
     private lateinit var continueButton: Button
@@ -50,6 +56,9 @@ class BreatheActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
     private var label: String = ""
     private var continueLabelTemplate: String = "Open anyway"
+
+    @Volatile
+    private var destroyed = false
 
     private val tick = object : Runnable {
         override fun run() {
@@ -67,10 +76,16 @@ class BreatheActivity : Activity() {
 
         pkg = intent.getStringExtra(EXTRA_PACKAGE) ?: run { finish(); return }
         label = intent.getStringExtra(EXTRA_LABEL) ?: pkg
+        preview = intent.getBooleanExtra(EXTRA_PREVIEW, false)
+        hapticsEnabled = intent.getBooleanExtra(EXTRA_HAPTICS, true)
         breathSeconds = intent.getIntExtra(EXTRA_BREATH_SECONDS, MIN_BREATH_SECONDS)
             .coerceIn(MIN_BREATH_SECONDS, 120)
-        // Unpredictable wait: the configured length plus 0–40%, so it can't be counted along.
-        remaining = breathSeconds + Random.nextInt(0, breathSeconds * 2 / 5 + 1)
+        // Unpredictable wait: the configured length plus 0–40%, so it can't be counted along —
+        // plus a little longer for every repeat open today (felt, not gamed: nothing is shown).
+        val priorOpens = if (preview) 0 else EventLog.get(this).countSince(pkg, EventType.SHOWN, UsageQuery.startOfToday())
+        val progressive = (3 * (priorOpens - 1).coerceAtLeast(0)).coerceAtMost(30)
+        remaining = breathSeconds + Random.nextInt(0, breathSeconds * 2 / 5 + 1) + progressive
+        if (preview) remaining = breathSeconds.coerceAtMost(15) // a preview shouldn't punish curiosity
         sessionMinutes = intent.getIntExtra(EXTRA_SESSION_MINUTES, 5)
         val showReflection = intent.getBooleanExtra(EXTRA_REFLECTION, true)
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Take a breath"
@@ -85,6 +100,22 @@ class BreatheActivity : Activity() {
 
         val content = buildUi(title, reflection, showReflection, continueLabelTemplate, dismissLabel, topColor, bottomColor)
         setContentView(content)
+        // Edge-to-edge: keep the buttons above the navigation bar and the header below the cutout.
+        content.setOnApplyWindowInsetsListener { v, insets ->
+            val top: Int
+            val bottom: Int
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                top = bars.top; bottom = bars.bottom
+            } else {
+                @Suppress("DEPRECATION")
+                top = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottom = insets.systemWindowInsetBottom
+            }
+            v.setPadding(dp(28), dp(24) + top, dp(28), dp(20) + bottom)
+            insets
+        }
         // Ease in instead of snapping over the app that just opened.
         content.alpha = 0f
         content.translationY = dp(10).toFloat()
@@ -92,6 +123,19 @@ class BreatheActivity : Activity() {
         startBreathingAnimation()
         ui.postDelayed(tick, 1000)
         loadGuiltLines()
+    }
+
+    /**
+     * Leaving the screen (HOME, recents, lock) IS a decision — treat it as walking away and
+     * don't keep eleven infinite animators alive invisibly in the background.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (!isFinishing && !isChangingConfigurations && !resolved) {
+            if (!preview) EventLog.get(this).log(pkg, EventType.DISMISSED, System.currentTimeMillis())
+            resolved = true
+            finish()
+        }
     }
 
     private fun buildUi(
@@ -126,7 +170,7 @@ class BreatheActivity : Activity() {
             gravity = Gravity.CENTER
         })
         header.addView(TextView(this).apply {
-            text = "Opening $label"
+            text = if (preview) "Preview" else "Opening $label"
             setTextColor(Color.WHITE)
             textSize = 26f
             gravity = Gravity.CENTER
@@ -195,7 +239,7 @@ class BreatheActivity : Activity() {
             textSize = 16f
             setTextColor(top)
             background = buttonBg(Color.WHITE)
-            setOnClickListener { onDismiss() }
+            setOnClickListener { onDismiss(it) }
         }
         root.addView(dismissButton, lp(matchWidth = true, weight = 0f).apply { height = dp(56) })
 
@@ -341,6 +385,7 @@ class BreatheActivity : Activity() {
     private var guiltIndex = 0
     private val guiltCycler = object : Runnable {
         override fun run() {
+            if (destroyed) return
             if (guiltLines.size > 1) {
                 guiltIndex = (guiltIndex + 1) % guiltLines.size
                 todayText.animate().alpha(0f).setDuration(220).withEndAction {
@@ -356,23 +401,33 @@ class BreatheActivity : Activity() {
         io.execute {
             val q = UsageQuery(this)
             val lines = ArrayList<String>()
+            val now = System.currentTimeMillis()
+            val todayStart = UsageQuery.startOfToday()
+            val opens = if (q.hasPermission()) q.opensBetween(todayStart, now)[pkg] ?: 0 else 0
+
+            // The open count is the line that actually changes behaviour — it leads.
+            if (opens >= 3) lines += "That's the ${ordinal(opens)} time you've reached for $label today"
+
             if (q.hasPermission()) {
-                val now = System.currentTimeMillis()
-                val todayStart = UsageQuery.startOfToday()
                 val dayMs = 24L * 60 * 60 * 1000
                 val todayMs = q.usageBetween(todayStart, now)[pkg] ?: 0L
                 val yesterdayMs = q.usageBetween(todayStart - dayMs, todayStart)[pkg] ?: 0L
                 val weekMs = q.usageBetween(todayStart - 6 * dayMs, now)[pkg] ?: 0L
-                val opens = q.opensBetween(todayStart, now)[pkg] ?: 0
 
                 lines += if (todayMs < 60_000) "Nothing wasted here yet today. Keep it that way?"
                 else "You've already wasted ${fmtDuration(todayMs)} here today"
-                if (opens > 1) lines += "This is open number $opens today"
+                if (opens in 2..2) lines += "This is open number $opens today"
                 if (yesterdayMs >= 10 * 60_000) lines += "Yesterday: ${fmtDuration(yesterdayMs)} gone to $label"
                 if (weekMs >= 30 * 60_000) lines += "${fmtDuration(weekMs)} lost to $label this week"
             }
+
+            // The walk-away streak belongs at the decision point, as loss aversion.
+            val streak = if (preview) 0 else EventLog.get(this).dayStreak(EventType.DISMISSED, now)
+            if (streak >= 2) lines += "You've walked away every day for $streak days. End that here?"
+
             if (lines.isEmpty()) lines += "Do you actually need this right now?"
             ui.post {
+                if (destroyed) return@post
                 guiltLines = lines
                 guiltIndex = 0
                 todayText.text = lines[0]
@@ -386,16 +441,42 @@ class BreatheActivity : Activity() {
         return if (min < 60) "$min min" else "${min / 60} h ${min % 60} min"
     }
 
+    private fun ordinal(n: Int): String = when {
+        n % 100 in 11..13 -> "${n}th"
+        n % 10 == 1 -> "${n}st"
+        n % 10 == 2 -> "${n}nd"
+        n % 10 == 3 -> "${n}rd"
+        else -> "${n}th"
+    }
+
     private fun onContinue() {
-        GrantRegistry.grant(pkg, System.currentTimeMillis() + sessionMinutes * 60_000L)
-        EventLog(this).log(pkg, EventType.CONTINUED, System.currentTimeMillis())
+        // Zero ceremony on the way in — no haptic, no copy. Opening anyway is not an event.
+        resolved = true
+        if (!preview) {
+            GrantRegistry.grant(this, pkg, System.currentTimeMillis() + sessionMinutes * 60_000L)
+            EventLog.get(this).log(pkg, EventType.CONTINUED, System.currentTimeMillis())
+        }
         finish()
     }
 
-    private fun onDismiss() {
-        EventLog(this).log(pkg, EventType.DISMISSED, System.currentTimeMillis())
-        // Walking away is the behaviour to reinforce — it gets the only positive feedback here.
-        Toast.makeText(this, "Good call.", Toast.LENGTH_SHORT).show()
+    private fun onDismiss(view: View? = null) {
+        resolved = true
+        if (preview) {
+            finish()
+            return
+        }
+        val now = System.currentTimeMillis()
+        // Walking away is the behaviour to reinforce — it gets the only physical + verbal payout.
+        if (hapticsEnabled && view != null) {
+            val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY
+            view.performHapticFeedback(constant)
+        }
+        val nth = EventLog.get(this).countSince(pkg, EventType.DISMISSED, UsageQuery.startOfToday()) + 1
+        val message = if (nth >= 2) "Good call — ${ordinal(nth)} walk-away today."
+        else AFFIRMATIONS.random()
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        EventLog.get(this).log(pkg, EventType.DISMISSED, now)
         val home = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -410,6 +491,7 @@ class BreatheActivity : Activity() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         ui.removeCallbacksAndMessages(null)
         animators.forEach { it.cancel() }
         animators.clear()
@@ -483,12 +565,22 @@ class BreatheActivity : Activity() {
             "What else could these minutes become?",
         )
 
+        /** First walk-away of the day draws from these; later ones get the running count. */
+        private val AFFIRMATIONS = listOf(
+            "Good call.",
+            "That's the habit breaking.",
+            "Back to your day.",
+            "Nothing in there was urgent.",
+        )
+
         const val EXTRA_PACKAGE = "pkg"
         const val EXTRA_LABEL = "label"
         const val EXTRA_BREATH_SECONDS = "breath"
         const val EXTRA_REFLECTION = "reflection"
         const val EXTRA_SESSION_MINUTES = "session"
         const val EXTRA_DOWNTIME = "downtime"
+        const val EXTRA_HAPTICS = "haptics"
+        const val EXTRA_PREVIEW = "previewMode"
         const val EXTRA_TITLE = "title"
         const val EXTRA_REFLECTION_TEXT = "reflectionText"
         const val EXTRA_CONTINUE_LABEL = "continueLabel"

@@ -11,6 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { tap } from '@/lib/haptics';
+import { scrollActiveToTop } from '@/lib/scrollTop';
 import { useAppTheme } from '@/theme';
 import { PressableScale } from '@/ui/kit';
 
@@ -87,6 +88,9 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
             <PressableScale
               key={route.key}
               scaleTo={0.92}
+              accessibilityRole="tab"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: focused }}
               onPress={() => {
                 tap();
                 const event = navigation.emit({
@@ -94,7 +98,11 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
                   target: route.key,
                   canPreventDefault: true,
                 });
-                if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+                if (focused) {
+                  scrollActiveToTop(); // re-tapping the active tab returns to the top
+                } else if (!event.defaultPrevented) {
+                  navigation.navigate(route.name);
+                }
               }}
               style={{ width: ITEM_WIDTH, alignItems: 'center', paddingVertical: 8 }}>
               <Ionicons name={tab.icon} size={20} color={focused ? c.onPrimary : c.textDim} />

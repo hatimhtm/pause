@@ -1,16 +1,30 @@
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Alert, View } from 'react-native';
 
 import { CHANGELOG } from '@/lib/changelog';
 import { tap } from '@/lib/haptics';
-import { actions, useStore } from '@/lib/store';
-import { radius, spacing, useAppTheme } from '@/theme';
-import { Appear, Body, Card, Chips, Heading, Label, PressableScale, Screen, Title, ToggleRow } from '@/ui/kit';
+import { Native } from '@/lib/native';
+import { actions, useStoreSelector } from '@/lib/store';
+import { spacing, useAppTheme } from '@/theme';
+import {
+  Appear,
+  Body,
+  Button,
+  Card,
+  Chips,
+  DisclosureChevron,
+  Heading,
+  Input,
+  Label,
+  PressableScale,
+  Screen,
+  Title,
+  ToggleRow,
+} from '@/ui/kit';
 
 const BREATH_PRESETS = [
   { name: 'Calm teal', colorTop: '#06403F', colorBottom: '#0E7C7B', colorAccent: '#BFE3E2' },
@@ -24,15 +38,18 @@ const BREATH_PRESETS = [
 export default function SettingsScreen() {
   const c = useAppTheme();
   const router = useRouter();
-  const { settings, breath } = useStore();
+  const settings = useStoreSelector((s) => s.settings);
+  const breath = useStoreSelector((s) => s.breath);
   const [checking, setChecking] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
 
   // Two versions exist on purpose: the UI ships over the air (this bundle), the engine only
-  // ships in an APK. CHANGELOG[0] states what this bundle is; the APK reports itself.
+  // ships in an APK. CHANGELOG[0] states what this bundle is; the engine reports itself
+  // (v1.4+), with the runtime/app version as a fallback for older engines.
   const uiVersion = CHANGELOG[0].version;
-  const engineVersion = (Updates.runtimeVersion || Constants.expoConfig?.version) ?? '?';
-  const engineOutdated = engineVersion !== '?' && engineVersion !== uiVersion;
+  const engineVersion =
+    Native.getEngineVersion() ?? ((Updates.runtimeVersion || Constants.expoConfig?.version) ?? '?');
+  const engineOutdated = engineVersion !== '?' && !engineVersion.startsWith('pause') && engineVersion !== uiVersion;
   const otaTag = Updates.updateId
     ? `update ${Updates.updateId.slice(0, 8)}${
         Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleDateString()}` : ''
@@ -101,14 +118,20 @@ export default function SettingsScreen() {
       <Label style={{ marginTop: spacing.xl, marginBottom: spacing.sm }}>Breathe screen</Label>
       <Card style={{ marginBottom: spacing.sm }}>
         <Label style={{ marginBottom: spacing.sm }}>Title</Label>
-        <TextInput
+        <Input
           value={breath.title}
           onChangeText={(t) => actions.updateBreath({ title: t })}
           placeholder="Take a breath"
-          placeholderTextColor={c.textFaint}
-          style={{ color: c.text, backgroundColor: c.bg, borderRadius: radius.sm, paddingHorizontal: spacing.md, paddingVertical: 10, fontSize: 16, marginBottom: spacing.md }}
         />
-        <Label style={{ marginBottom: spacing.sm }}>Theme</Label>
+        <Label style={{ marginTop: spacing.md, marginBottom: spacing.sm }}>
+          Your own question — joins the rotation
+        </Label>
+        <Input
+          value={breath.reflection}
+          onChangeText={(t) => actions.updateBreath({ reflection: t })}
+          placeholder="e.g. What are you looking for right now?"
+        />
+        <Label style={{ marginTop: spacing.md, marginBottom: spacing.sm }}>Theme</Label>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
           {BREATH_PRESETS.map((p) => {
             const active = breath.colorBottom === p.colorBottom && breath.colorTop === p.colorTop;
@@ -116,6 +139,8 @@ export default function SettingsScreen() {
               <PressableScale
                 key={p.name}
                 scaleTo={0.9}
+                accessibilityLabel={`${p.name} theme`}
+                accessibilityState={{ selected: active }}
                 onPress={() => {
                   tap();
                   actions.updateBreath({ colorTop: p.colorTop, colorBottom: p.colorBottom, colorAccent: p.colorAccent });
@@ -136,6 +161,15 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+        {Native.canPreviewBreathe() ? (
+          <Button
+            title="Preview the pause"
+            variant="ghost"
+            icon="eye"
+            onPress={() => Native.previewBreathe()}
+            style={{ marginTop: spacing.lg }}
+          />
+        ) : null}
       </Card>
 
       <Card onPress={() => router.push('/onboarding')} style={{ marginBottom: spacing.sm }}>
@@ -153,35 +187,42 @@ export default function SettingsScreen() {
       </Card>
 
       <Card style={{ marginBottom: spacing.sm }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <Heading style={{ fontSize: 15 }}>Version</Heading>
-            <Body dim style={{ fontSize: 13, marginTop: 2 }}>
-              UI v{uiVersion} · {otaTag}
-            </Body>
-            <Body dim style={{ fontSize: 13, marginTop: 2 }}>
-              Engine v{engineVersion}
-            </Body>
-          </View>
-        </View>
+        <Heading style={{ fontSize: 15 }}>Version</Heading>
+        <Body dim style={{ fontSize: 13, marginTop: 2 }}>
+          UI v{uiVersion} · {otaTag}
+        </Body>
+        <Body dim style={{ fontSize: 13, marginTop: 2 }}>
+          Engine v{engineVersion}
+        </Body>
         {engineOutdated ? (
-          <Pressable
-            onPress={() => WebBrowser.openBrowserAsync('https://github.com/hatimhtm/pause/releases/latest')}
+          <PressableScale
+            scaleTo={0.98}
+            accessibilityRole="link"
+            onPress={() => {
+              tap();
+              WebBrowser.openBrowserAsync('https://github.com/hatimhtm/pause/releases/latest');
+            }}
             style={{ marginTop: spacing.sm }}>
             <Body style={{ color: c.accent, fontSize: 13 }}>
-              The screens update themselves, but the pause engine ships in the APK — engine v
-              {uiVersion} is on GitHub. Tap to get it.
+              The screens update themselves, but the pause engine ships in the APK — a newer
+              engine is on GitHub. Tap to get it.
             </Body>
-          </Pressable>
+          </PressableScale>
         ) : null}
-        <Pressable
-          onPress={() => setLogOpen((v) => !v)}
-          style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md }}>
+        <PressableScale
+          scaleTo={0.98}
+          hitSlop={8}
+          accessibilityState={{ expanded: logOpen }}
+          onPress={() => {
+            tap();
+            setLogOpen((v) => !v);
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, paddingVertical: 4 }}>
           <Body style={{ color: c.primary, fontSize: 14, fontWeight: '700', flex: 1 }}>
             What’s changed
           </Body>
-          <Ionicons name={logOpen ? 'chevron-up' : 'chevron-down'} size={18} color={c.primary} />
-        </Pressable>
+          <DisclosureChevron open={logOpen} color={c.primary} />
+        </PressableScale>
         {logOpen
           ? CHANGELOG.map((entry, idx) => (
               <Appear key={entry.id} index={idx}>
@@ -193,10 +234,10 @@ export default function SettingsScreen() {
                     borderTopColor: c.border,
                   }}>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                    <Heading style={{ fontSize: 14.5, flex: 1 }}>
+                    <Heading style={{ fontSize: 15, flex: 1 }}>
                       v{entry.version} — {entry.title}
                     </Heading>
-                    <Body faint style={{ fontSize: 11.5 }}>{entry.date}</Body>
+                    <Body faint style={{ fontSize: 12 }}>{entry.date}</Body>
                   </View>
                   {entry.highlights.map((h, i) => (
                     <Body key={i} dim style={{ fontSize: 13, marginTop: 4 }}>

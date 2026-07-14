@@ -1,17 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, TextInput, View } from 'react-native';
+import { Modal, Switch, View } from 'react-native';
 
 import { DAY_LETTERS, daysSummary, minuteToTime } from '@/lib/format';
 import { tap } from '@/lib/haptics';
-import { actions, newQuietId, useStore } from '@/lib/store';
+import { actions, newQuietId, useStoreSelector } from '@/lib/store';
 import type { QuietHours } from '@/lib/types';
 import { radius, spacing, useAppTheme } from '@/theme';
-import { Appear, Body, Button, Card, Heading, Label, PressableScale, Screen, Title } from '@/ui/kit';
+import { Appear, Body, Button, Card, Heading, Input, Label, PressableScale, Screen, Title } from '@/ui/kit';
 
 export default function QuietScreen() {
   const c = useAppTheme();
-  const { quiet } = useStore();
+  const quiet = useStoreSelector((s) => s.quiet);
   const [editing, setEditing] = useState<QuietHours | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -22,13 +22,15 @@ export default function QuietScreen() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm }}>
-        <Title>Quiet hours</Title>
-        <Button title="New" icon="add" onPress={startNew} style={{ paddingVertical: 10, paddingHorizontal: spacing.lg }} />
-      </View>
-      <Body dim style={{ marginBottom: spacing.lg }}>
-        During these windows every watched app gets the pause screen, and its notifications are muted.
-      </Body>
+      <Appear index={0}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.lg, marginBottom: spacing.sm }}>
+          <Title>Quiet hours</Title>
+          <Button title="New" icon="add" onPress={startNew} style={{ paddingVertical: 10, paddingHorizontal: spacing.lg }} />
+        </View>
+        <Body dim style={{ marginBottom: spacing.lg }}>
+          During these windows every watched app gets the pause screen, and its notifications are muted.
+        </Body>
+      </Appear>
 
       {quiet.length === 0 ? (
         <Appear index={1}>
@@ -39,26 +41,26 @@ export default function QuietScreen() {
       ) : (
         quiet.map((q, qi) => (
           <Appear key={q.id} index={1 + qi}>
-          <Card onPress={() => { setEditing(q); setOpen(true); }} style={{ marginBottom: spacing.sm }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ flex: 1 }}>
-                <Heading style={{ fontSize: 16 }}>{q.label || 'Quiet hours'}</Heading>
-                <Body dim style={{ fontSize: 13, marginTop: 2 }}>
-                  {minuteToTime(q.startMinute)} – {minuteToTime(q.endMinute)}
-                </Body>
-                <Body faint style={{ fontSize: 12, marginTop: 2 }}>
-                  {daysSummary(q.daysMask)}
-                </Body>
+            <Card onPress={() => { setEditing(q); setOpen(true); }} style={{ marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Heading style={{ fontSize: 16 }}>{q.label || 'Quiet hours'}</Heading>
+                  <Body dim style={{ fontSize: 13, marginTop: 2 }}>
+                    {minuteToTime(q.startMinute)} – {minuteToTime(q.endMinute)}
+                  </Body>
+                  <Body faint style={{ fontSize: 12, marginTop: 2 }}>
+                    {q.enabled ? daysSummary(q.daysMask) : 'Off'}
+                  </Body>
+                </View>
+                <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: q.enabled ? c.primary : c.textFaint }} />
               </View>
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: q.enabled ? c.primary : c.textFaint }} />
-            </View>
-          </Card>
+            </Card>
           </Appear>
         ))
       )}
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0008' }}>
+      <Modal visible={open} transparent statusBarTranslucent animationType="slide" onRequestClose={() => setOpen(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: c.scrim }}>
           {editing ? (
             <Editor
               value={editing}
@@ -90,15 +92,25 @@ function Editor({
   const c = useAppTheme();
   return (
     <View style={{ backgroundColor: c.bgElevated, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.xl, paddingBottom: spacing.xxxl }}>
-      <Heading style={{ marginBottom: spacing.lg }}>Quiet hours</Heading>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.lg }}>
+        <Heading style={{ flex: 1 }}>Quiet hours</Heading>
+        <Switch
+          value={value.enabled}
+          accessibilityLabel="Quiet hours on"
+          onValueChange={(v) => {
+            tap();
+            onChange({ ...value, enabled: v });
+          }}
+          trackColor={{ true: c.switchOn, false: c.cardAlt }}
+          thumbColor="#fff"
+        />
+      </View>
 
       <Label style={{ marginBottom: spacing.sm }}>Name</Label>
-      <TextInput
+      <Input
         value={value.label}
         onChangeText={(t) => onChange({ ...value, label: t })}
         placeholder="Bedtime"
-        placeholderTextColor={c.textFaint}
-        style={{ color: c.text, backgroundColor: c.card, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: 12, fontSize: 16 }}
       />
 
       <View style={{ flexDirection: 'row', gap: spacing.lg, marginTop: spacing.lg }}>
@@ -114,11 +126,13 @@ function Editor({
             <PressableScale
               key={day}
               scaleTo={0.88}
+              accessibilityLabel={`${letter} ${on ? 'on' : 'off'}`}
+              accessibilityState={{ selected: on }}
               onPress={() => {
                 tap();
                 onChange({ ...value, daysMask: value.daysMask ^ (1 << day) });
               }}
-              style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.primary : c.cardAlt }}>
+              style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? c.primary : c.cardAlt }}>
               <Body style={{ color: on ? c.onPrimary : c.text, fontWeight: '700' }}>{letter}</Body>
             </PressableScale>
           );
@@ -142,7 +156,7 @@ function TimeStepper({ label, minute, onChange }: { label: string; minute: numbe
       <Label style={{ marginBottom: spacing.sm }}>{label}</Label>
       <View style={{ backgroundColor: c.card, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md, alignItems: 'center' }}>
         <Heading style={{ fontSize: 18 }}>{minuteToTime(minute)}</Heading>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+        <View style={{ flexDirection: 'row', marginTop: spacing.xs }}>
           <StepBtn icon="remove" onPress={() => step(-60)} sub="1h" />
           <StepBtn icon="remove" onPress={() => step(-15)} sub="15m" />
           <StepBtn icon="add" onPress={() => step(15)} sub="15m" />
@@ -158,11 +172,13 @@ function StepBtn({ icon, onPress, sub }: { icon: 'add' | 'remove'; onPress: () =
   return (
     <PressableScale
       scaleTo={0.85}
+      accessibilityLabel={`${icon === 'add' ? 'Add' : 'Subtract'} ${sub}`}
       onPress={() => {
         tap();
         onPress();
       }}
-      style={{ alignItems: 'center' }}>
+      // 44dp touch target around the 30dp visual
+      style={{ alignItems: 'center', justifyContent: 'center', width: 44, paddingVertical: 7 }}>
       <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c.cardAlt, alignItems: 'center', justifyContent: 'center' }}>
         <Ionicons name={icon} size={16} color={c.text} />
       </View>

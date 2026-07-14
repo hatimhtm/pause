@@ -1,22 +1,49 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
-import { computeEventHistory, type EventHistory } from '@/lib/stats';
-import { useStore } from '@/lib/store';
-import { spacing, useAppTheme } from '@/theme';
-import { Appear, AppAvatar, BarChart, Body, Card, Heading, Label, Screen, Spinner, StatTile } from '@/ui/kit';
+import { formatMinutes, startOfDayNDaysAgo } from '@/lib/format';
+import { Native } from '@/lib/native';
+import { computeAndCacheHistory, getCachedHistory, type EventHistory } from '@/lib/stats';
+import { useStoreSelector } from '@/lib/store';
+import { spacing } from '@/theme';
+import { Appear, AppAvatar, BarChart, Body, Card, Heading, Label, PageHeader, Screen, Spinner, StatTile } from '@/ui/kit';
+
+/**
+ * Walk-aways × the typical session length in each app ≈ the time those wins bought back.
+ * Honest by construction: derived per app, clamped to sane session lengths, hidden when
+ * the inputs don't exist.
+ */
+function estimateReclaimedMinutes(data: EventHistory): number {
+  if (!Native.hasUsageAccess()) return 0;
+  const start = startOfDayNDaysAgo(29);
+  const now = Date.now();
+  const usage = Native.getUsage(start, now);
+  const opens = Native.getOpens(start, now);
+  let total = 0;
+  for (const a of data.perApp) {
+    if (a.backedOut === 0) continue;
+    const o = opens[a.packageName] ?? 0;
+    if (o === 0) continue;
+    const avgSessionMin = Math.min(30, Math.max(1, (usage[a.packageName] ?? 0) / 60000 / o));
+    total += avgSessionMin * a.backedOut;
+  }
+  return Math.round(total);
+}
 
 /** Every time she reached the pause and chose to walk away — the habit actually breaking. */
 export default function WinsScreen() {
-  const c = useAppTheme();
   const router = useRouter();
-  const { apps } = useStore();
-  const [data, setData] = useState<EventHistory | null>(null);
+  const apps = useStoreSelector((s) => s.apps);
+  const [data, setData] = useState<EventHistory | null>(() => getCachedHistory(apps));
+  const [reclaimed, setReclaimed] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  const compute = useCallback(() => setData(computeEventHistory(apps)), [apps]);
+  const compute = useCallback(() => {
+    const d = computeAndCacheHistory(apps);
+    setData(d);
+    setReclaimed(estimateReclaimedMinutes(d));
+  }, [apps]);
 
   useEffect(() => {
     const t = setTimeout(compute, 40);
@@ -39,26 +66,35 @@ export default function WinsScreen() {
   return (
     <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Appear index={0}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.xs }}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={{ marginRight: spacing.md }}>
-            <Ionicons name="chevron-back" size={26} color={c.text} />
-          </Pressable>
-          <Heading style={{ fontSize: 22 }}>Walking away</Heading>
-        </View>
-        <Body dim style={{ marginBottom: spacing.lg, marginLeft: 38 }}>
-          Times you hit the pause and closed the app instead. These are the wins.
-        </Body>
+        <PageHeader
+          title="Walking away"
+          subtitle="Times you hit the pause and closed the app instead. These are the wins."
+          onBack={() => router.back()}
+        />
       </Appear>
 
       {!data ? (
         <Spinner />
       ) : (
         <>
+          {reclaimed > 0 ? (
+            <Appear index={1}>
+              <Card tone="primarySoft" style={{ marginBottom: spacing.md }}>
+                <Heading style={{ fontSize: 20 }}>
+                  Roughly {formatMinutes(reclaimed)} not spent in these apps
+                </Heading>
+                <Body faint style={{ fontSize: 12.5, marginTop: 4 }}>
+                  Last 30 days · walk-aways × your typical session there
+                </Body>
+              </Card>
+            </Appear>
+          ) : null}
+
           <Appear index={1}>
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
               <StatTile
-                value={String(data.streak)}
-                label={data.streak === 1 ? 'day streak' : 'day streak of walking away'}
+                value={data.streakCapped ? `${data.streak}+` : String(data.streak)}
+                label="day streak of walking away"
                 icon="flame"
                 tone="primary"
               />
@@ -81,7 +117,7 @@ export default function WinsScreen() {
               <Heading style={{ fontSize: 16, marginBottom: spacing.md }}>Last 14 days</Heading>
               <BarChart
                 values={last14.map((d) => d.backedOut)}
-                labels={last14.map((d, i) => (i % 2 === 0 ? d.label.split(' ')[1] ?? d.label : ''))}
+                labels={last14.map((d, i) => (i % 2 === 0 ? String(d.dayOfMonth) : ''))}
                 activeIndex={last14.length - 1}
                 formatValue={(v) => String(v)}
               />
@@ -97,7 +133,9 @@ export default function WinsScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <AppAvatar icon={a.icon} />
                   <View style={{ flex: 1, marginLeft: spacing.md }}>
-                    <Heading style={{ fontSize: 16 }}>{a.label}</Heading>
+                    <Heading style={{ fontSize: 16 }} numberOfLines={1}>
+                      {a.label}
+                    </Heading>
                     <Body faint style={{ fontSize: 12.5 }}>
                       walked away {a.backedOut} of {a.shown} times
                     </Body>

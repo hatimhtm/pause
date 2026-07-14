@@ -40,7 +40,8 @@ class InstalledApps(context: Context) {
 
     private fun iconBase64(pkg: String): String? = try {
         val drawable = pm.getApplicationIcon(pkg)
-        val bmp = drawableToBitmap(drawable, 96)
+        // 64px renders crisp at the 44dp avatar and roughly halves the bridge payload vs 96px.
+        val bmp = drawableToBitmap(drawable, 64)
         val out = ByteArrayOutputStream()
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
         "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
