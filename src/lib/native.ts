@@ -3,6 +3,13 @@ import { Platform } from 'react-native';
 
 import type { InstalledApp, LoggedEvent } from './types';
 
+export type UsageBucket = {
+  packageName: string;
+  start: number;
+  end: number;
+  totalMs: number;
+};
+
 /**
  * Typed wrapper around the local `PauseNative` Kotlin module. On any non-Android platform (iOS
  * simulator, web during development) the module is absent, so every call falls back to a safe
@@ -20,6 +27,11 @@ type PauseNativeModule = {
   getInstalledApps(): Promise<InstalledApp[]>;
   getUsage(start: number, end: number): Record<string, number>;
   getOpens(start: number, end: number): Record<string, number>;
+  getUsageHistory(
+    interval: 'daily' | 'weekly' | 'monthly' | 'yearly',
+    start: number,
+    end: number,
+  ): UsageBucket[];
   getEvents(since: number): { packageName: string; timestamp: number; type: string }[];
   pruneEventsBefore(before: number): void;
 };
@@ -46,6 +58,18 @@ export const Native = {
     native?.getUsage(start, end) ?? {},
   getOpens: (start: number, end: number): Record<string, number> =>
     native?.getOpens(start, end) ?? {},
+  /** Optional-chained per method: APKs older than v1.2 don't have it — callers get []. */
+  getUsageHistory: (
+    interval: 'daily' | 'weekly' | 'monthly' | 'yearly',
+    start: number,
+    end: number,
+  ): UsageBucket[] => {
+    try {
+      return native?.getUsageHistory?.(interval, start, end) ?? [];
+    } catch {
+      return [];
+    }
+  },
   getEvents: (since: number): LoggedEvent[] =>
     (native?.getEvents(since) ?? []) as LoggedEvent[],
   pruneEventsBefore: (before: number) => native?.pruneEventsBefore(before),

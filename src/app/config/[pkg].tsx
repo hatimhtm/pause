@@ -1,10 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { DAY_LETTERS, formatMinutes, startOfDayNDaysAgo } from '@/lib/format';
+import { Native } from '@/lib/native';
 import { actions, useStore } from '@/lib/store';
 import { spacing, useAppTheme } from '@/theme';
-import { AppAvatar, Body, Button, Card, Chips, Heading, Label, Screen, ToggleRow } from '@/ui/kit';
+import { AppAvatar, BarChart, Body, Button, Card, Chips, Heading, Label, Screen, ToggleRow } from '@/ui/kit';
+
+type Week = { labels: string[]; values: number[]; total: number };
 
 const BREATH_OPTIONS = [15, 20, 30, 45, 60];
 
@@ -14,6 +19,31 @@ export default function AppConfigScreen() {
   const { pkg } = useLocalSearchParams<{ pkg: string }>();
   const { apps } = useStore();
   const app = pkg ? apps[pkg] : undefined;
+  const [week, setWeek] = useState<Week | null>(null);
+
+  // This app's last 7 days — deferred off the first paint like the other stat screens.
+  useEffect(() => {
+    if (!pkg) return;
+    const t = setTimeout(() => {
+      if (!Native.hasUsageAccess()) {
+        setWeek({ labels: [], values: [], total: 0 });
+        return;
+      }
+      const labels: string[] = [];
+      const values: number[] = [];
+      let total = 0;
+      for (let d = 6; d >= 0; d--) {
+        const start = startOfDayNDaysAgo(d);
+        const end = d === 0 ? Date.now() : startOfDayNDaysAgo(d - 1);
+        const minutes = Math.round((Native.getUsage(start, end)[pkg] ?? 0) / 60000);
+        labels.push(DAY_LETTERS[new Date(start).getDay()]);
+        values.push(minutes);
+        total += minutes;
+      }
+      setWeek({ labels, values, total });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [pkg]);
 
   if (!app) {
     return (
@@ -34,6 +64,22 @@ export default function AppConfigScreen() {
         <AppAvatar icon={app.icon} size={38} />
         <Heading style={{ fontSize: 22, marginLeft: spacing.md }}>{app.label}</Heading>
       </View>
+
+      {week && week.values.length > 0 ? (
+        <Card style={{ marginBottom: spacing.lg }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+            <Heading style={{ fontSize: 16, flex: 1 }}>This week here</Heading>
+            <Heading style={{ fontSize: 16 }}>{formatMinutes(week.total)}</Heading>
+          </View>
+          <BarChart
+            values={week.values}
+            labels={week.labels}
+            height={96}
+            activeIndex={6}
+            formatValue={(v) => formatMinutes(v)}
+          />
+        </Card>
+      ) : null}
 
       <Label style={{ marginBottom: spacing.sm }}>The pause</Label>
       <ToggleRow

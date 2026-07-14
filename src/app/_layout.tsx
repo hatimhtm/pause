@@ -52,6 +52,8 @@ export default function RootLayout() {
         <Stack.Screen name="picker" options={{ presentation: 'modal' }} />
         <Stack.Screen name="config/[pkg]" />
         <Stack.Screen name="stats" />
+        <Stack.Screen name="attempts" />
+        <Stack.Screen name="wins" />
       </Stack>
     </>
   );

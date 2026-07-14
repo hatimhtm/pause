@@ -126,8 +126,14 @@ export default function TodayScreen() {
                 label="times you reached for them"
                 icon="hand-left"
                 tone="primary"
+                onPress={() => router.push('/attempts')}
               />
-              <StatTile value={String(data.totalBackedOut)} label="times you backed out" icon="walk" />
+              <StatTile
+                value={String(data.totalBackedOut)}
+                label="times you backed out"
+                icon="walk"
+                onPress={() => router.push('/wins')}
+              />
             </View>
           </Appear>
 

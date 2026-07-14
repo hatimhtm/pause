@@ -49,6 +49,11 @@ class PauseNativeModule : Module() {
             UsageQuery(context).opensBetween(start.toLong(), end.toLong())
         }
 
+        // Pre-aggregated long-range buckets ("daily"|"weekly"|"monthly"|"yearly").
+        Function("getUsageHistory") { interval: String, start: Double, end: Double ->
+            UsageQuery(context).history(interval, start.toLong(), end.toLong())
+        }
+
         Function("getEvents") { since: Double ->
             EventLog(context).since(since.toLong()).map {
                 mapOf(

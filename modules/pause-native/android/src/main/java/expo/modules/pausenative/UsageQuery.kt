@@ -49,6 +49,35 @@ class UsageQuery(context: Context) {
         return totals
     }
 
+    /**
+     * Long-range history via the system's pre-aggregated buckets. Retention is tiered by the OS
+     * (roughly: daily ≈1 week, weekly ≈4 weeks, monthly ≈6 months, yearly ≈2 years), so callers
+     * should render whatever comes back rather than assume a full range.
+     */
+    fun history(interval: String, start: Long, end: Long): List<Map<String, Any>> {
+        val usm = appContext.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val bucket = when (interval) {
+            "daily" -> UsageStatsManager.INTERVAL_DAILY
+            "weekly" -> UsageStatsManager.INTERVAL_WEEKLY
+            "monthly" -> UsageStatsManager.INTERVAL_MONTHLY
+            "yearly" -> UsageStatsManager.INTERVAL_YEARLY
+            else -> UsageStatsManager.INTERVAL_BEST
+        }
+        val stats = try {
+            usm.queryUsageStats(bucket, start, end) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return stats.filter { it.totalTimeInForeground > 0 }.map {
+            mapOf(
+                "packageName" to it.packageName,
+                "start" to it.firstTimeStamp.toDouble(),
+                "end" to it.lastTimeStamp.toDouble(),
+                "totalMs" to it.totalTimeInForeground.toDouble(),
+            )
+        }
+    }
+
     /** Number of times each package was brought to the foreground between [start] and [end]. */
     fun opensBetween(start: Long, end: Long): Map<String, Int> {
         val usm = appContext.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
