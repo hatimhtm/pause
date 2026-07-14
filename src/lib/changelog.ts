@@ -13,15 +13,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: '1.3.0',
+    id: '1.3.0b',
     version: '1.3.0',
     date: 'Jul 14, 2026',
     title: 'Glass & motion',
     highlights: [
-      'New floating glass tab bar — the highlight glides between tabs',
-      'Smoother animations across every screen',
+      'New floating glass tab bar — the highlight glides (and stays put now)',
+      'Add several apps at once, with a search bar that never scrolls away',
+      'Softer, subtler animations everywhere — like the card press',
       'Breathe screen reborn: glowing orb, drifting embers, layered breathing',
-      'Version info and this changelog, right here in Settings',
+      'Version info (UI + engine) and this changelog, right here in Settings',
     ],
   },
   {

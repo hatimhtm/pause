@@ -39,7 +39,14 @@ export function Screen({
   const c = useAppTheme();
   const r = useResponsive();
   const inner = (
-    <View style={{ width: '100%', maxWidth: r.contentWidth, alignSelf: 'center', paddingHorizontal: r.gutter }}>
+    <View
+      style={{
+        width: '100%',
+        maxWidth: r.contentWidth,
+        alignSelf: 'center',
+        paddingHorizontal: r.gutter,
+        flex: scroll ? undefined : 1,
+      }}>
       {children}
     </View>
   );
@@ -85,9 +92,9 @@ export function Appear({
   return (
     <Animated.View
       entering={FadeInDown.springify()
-        .damping(17)
-        .stiffness(160)
-        .delay(Math.min(index, 8) * 55)}
+        .damping(20)
+        .stiffness(180)
+        .delay(Math.min(index, 8) * 45)}
       style={style}>
       {children}
     </Animated.View>
@@ -283,7 +290,16 @@ export function StatTile({
   );
   if (!onPress) return <View style={{ flex: 1 }}>{inner}</View>;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.9 : 1 })}>
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        flex: 1,
+        opacity: pressed ? 0.94 : 1,
+        transform: [{ scale: pressed ? 0.975 : 1 }],
+      })}>
       {inner}
     </Pressable>
   );
@@ -491,7 +507,15 @@ export function GradientHeader({
   );
   if (!onPress) return inner;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.93 : 1 })}>
+    <Pressable
+      onPress={() => {
+        tap();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.95 : 1,
+        transform: [{ scale: pressed ? 0.985 : 1 }],
+      })}>
       {inner}
     </Pressable>
   );

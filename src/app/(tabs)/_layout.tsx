@@ -29,7 +29,13 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
 
   const x = useSharedValue(state.index * ITEM_WIDTH);
   useEffect(() => {
-    x.value = withSpring(state.index * ITEM_WIDTH, { damping: 15, stiffness: 170 });
+    // overshootClamping keeps the pill inside the bar — a bouncy spring would fly past the
+    // last tab and out of the pill's bounds.
+    x.value = withSpring(state.index * ITEM_WIDTH, {
+      damping: 24,
+      stiffness: 260,
+      overshootClamping: true,
+    });
   }, [state.index, x]);
   const pillStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
 
@@ -88,7 +94,12 @@ function PillTabBar({ state, navigation }: { state: any; navigation: any }) {
                 });
                 if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
               }}
-              style={{ width: ITEM_WIDTH, alignItems: 'center', paddingVertical: 8 }}>
+              style={({ pressed }) => ({
+                width: ITEM_WIDTH,
+                alignItems: 'center',
+                paddingVertical: 8,
+                transform: [{ scale: pressed ? 0.94 : 1 }],
+              })}>
               <Ionicons name={tab.icon} size={20} color={focused ? c.onPrimary : c.textDim} />
               <Text
                 style={{

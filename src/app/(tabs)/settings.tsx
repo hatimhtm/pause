@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import * as Updates from 'expo-updates';
+import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
 import { Alert, Pressable, TextInput, View } from 'react-native';
 
@@ -26,7 +27,11 @@ export default function SettingsScreen() {
   const [checking, setChecking] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
 
-  const appVersion = Constants.expoConfig?.version ?? '?';
+  // Two versions exist on purpose: the UI ships over the air (this bundle), the engine only
+  // ships in an APK. CHANGELOG[0] states what this bundle is; the APK reports itself.
+  const uiVersion = CHANGELOG[0].version;
+  const engineVersion = (Updates.runtimeVersion || Constants.expoConfig?.version) ?? '?';
+  const engineOutdated = engineVersion !== '?' && engineVersion !== uiVersion;
   const otaTag = Updates.updateId
     ? `update ${Updates.updateId.slice(0, 8)}${
         Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleDateString()}` : ''
@@ -147,10 +152,23 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Heading style={{ fontSize: 15 }}>Version</Heading>
             <Body dim style={{ fontSize: 13, marginTop: 2 }}>
-              v{appVersion} · {otaTag}
+              UI v{uiVersion} · {otaTag}
+            </Body>
+            <Body dim style={{ fontSize: 13, marginTop: 2 }}>
+              Engine v{engineVersion}
             </Body>
           </View>
         </View>
+        {engineOutdated ? (
+          <Pressable
+            onPress={() => WebBrowser.openBrowserAsync('https://github.com/hatimhtm/pause/releases/latest')}
+            style={{ marginTop: spacing.sm }}>
+            <Body style={{ color: c.accent, fontSize: 13 }}>
+              The screens update themselves, but the pause engine ships in the APK — engine v
+              {uiVersion} is on GitHub. Tap to get it.
+            </Body>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={() => setLogOpen((v) => !v)}
           style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md }}>
